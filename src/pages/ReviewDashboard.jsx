@@ -11,9 +11,9 @@ import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import Input from '../components/ui/Input';
 import Textarea from '../components/ui/Textarea';
-import { generateCourseContent } from '../services/aiService';
+import { generateCourseContent, generateCourseTopicsAndLessons } from '../services/aiService';
 
-const { FiEdit3, FiSave, FiPlay, FiChevronDown, FiChevronRight, FiBook, FiTarget, FiList, FiInfo } = FiIcons;
+const { FiEdit3, FiSave, FiPlay, FiChevronDown, FiChevronRight, FiBook, FiTarget, FiList, FiInfo, FiPlus, FiTrash2, FiRefreshCw } = FiIcons;
 
 const ReviewDashboard = () => {
   const { programId } = useParams();
@@ -26,6 +26,9 @@ const ReviewDashboard = () => {
   const [expandedTopics, setExpandedTopics] = useState(new Set());
   const [generating, setGenerating] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
+  const [addingTopic, setAddingTopic] = useState(false);
+  const [addingLesson, setAddingLesson] = useState(null);
+  const [regeneratingCourse, setRegeneratingCourse] = useState(false);
 
   useEffect(() => {
     const program = programs.find(p => p.id === programId);
@@ -34,7 +37,6 @@ const ReviewDashboard = () => {
       if (program.courses && program.courses.length > 0) {
         setSelectedCourseId(program.courses[0].id);
         
-        // Auto-expand the first topic of the selected course
         if (program.courses[0].topics && program.courses[0].topics.length > 0) {
           setExpandedTopics(new Set([program.courses[0].topics[0].id]));
         }
@@ -81,6 +83,119 @@ const ReviewDashboard = () => {
     toast.success('Changes saved successfully!');
   };
 
+  const handleAddTopic = () => {
+    if (!selectedCourse) return;
+    
+    const newTopic = {
+      id: `topic-${Date.now()}`,
+      topicTitle: 'New Topic',
+      topicLearningObjectiveDescription: 'Learning objectives for this topic',
+      lessons: []
+    };
+    
+    const updatedProgram = { ...currentProgram };
+    const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
+    if (course) {
+      course.topics = [...(course.topics || []), newTopic];
+      updateProgram(programId, updatedProgram);
+      setExpandedTopics(new Set([...expandedTopics, newTopic.id]));
+      toast.success('New topic added successfully!');
+    }
+  };
+
+  const handleAddLesson = (topicId) => {
+    const newLesson = {
+      id: `lesson-${Date.now()}`,
+      lessonTitle: 'New Lesson',
+      lessonDescription: 'Lesson description and objectives'
+    };
+    
+    const updatedProgram = { ...currentProgram };
+    const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
+    const topic = course?.topics?.find(t => t.id === topicId);
+    
+    if (topic) {
+      topic.lessons = [...(topic.lessons || []), newLesson];
+      updateProgram(programId, updatedProgram);
+      toast.success('New lesson added successfully!');
+    }
+  };
+
+  const handleDeleteTopic = (topicId) => {
+    const updatedProgram = { ...currentProgram };
+    const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
+    
+    if (course) {
+      course.topics = course.topics.filter(t => t.id !== topicId);
+      updateProgram(programId, updatedProgram);
+      
+      // Remove from expanded topics
+      const newExpanded = new Set(expandedTopics);
+      newExpanded.delete(topicId);
+      setExpandedTopics(newExpanded);
+      
+      toast.success('Topic deleted successfully!');
+    }
+  };
+
+  const handleDeleteLesson = (lessonId) => {
+    const updatedProgram = { ...currentProgram };
+    const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
+    const topic = course?.topics?.find(t => t.lessons?.some(l => l.id === lessonId));
+    
+    if (topic) {
+      topic.lessons = topic.lessons.filter(l => l.id !== lessonId);
+      updateProgram(programId, updatedProgram);
+      toast.success('Lesson deleted successfully!');
+    }
+  };
+
+  const handleRegenerateCourse = async () => {
+    if (!selectedCourse) return;
+    
+    const activeKeys = getActiveOpenAIKeys();
+    if (activeKeys.length === 0) {
+      toast.error('Please add at least one OpenAI API key in settings.');
+      return;
+    }
+    
+    setRegeneratingCourse(true);
+    toast.loading('Regenerating course topics and lessons...', { id: 'regenerating' });
+    
+    try {
+      const result = await generateCourseTopicsAndLessons(
+        selectedCourse,
+        currentProgram.programContext,
+        currentProgram.summaryProgramContext,
+        currentProgram.mustHaveAspects,
+        currentProgram.designConsiderations,
+        activeKeys[0].key
+      );
+      
+      if (result.topics && result.topics.length > 0) {
+        const updatedProgram = { ...currentProgram };
+        const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
+        
+        if (course) {
+          course.topics = result.topics;
+          updateProgram(programId, updatedProgram);
+          
+          // Expand the first topic
+          if (result.topics.length > 0) {
+            setExpandedTopics(new Set([result.topics[0].id]));
+          }
+          
+          toast.success('Course regenerated successfully!', { id: 'regenerating' });
+        }
+      }
+    } catch (error) {
+      console.error('Error regenerating course:', error);
+      toast.error('Failed to regenerate course. Please try again.', { id: 'regenerating' });
+    } finally {
+      setRegeneratingCourse(false);
+    }
+  };
+
   const toggleTopic = (topicId) => {
     const newExpanded = new Set(expandedTopics);
     if (newExpanded.has(topicId)) {
@@ -118,7 +233,6 @@ const ReviewDashboard = () => {
     try {
       await generateCourseContent(selectedCourse, lmsCredentials, activeKeys[0].key);
       
-      // Update program status
       updateProgram(programId, {
         status: 'in-progress',
         lastGenerated: new Date().toISOString()
@@ -155,22 +269,22 @@ const ReviewDashboard = () => {
           
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
-            <p>Currently, you're reviewing the <strong>program structure</strong> which includes course titles, topic outlines, and lesson titles.</p>
+            <p>The system first conducts comprehensive research using AI o3-mini to analyze your niche and create detailed program context.</p>
           </div>
           
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
-            <p>You can edit any element of this structure before proceeding to full content generation.</p>
+            <p>Based on the research, GPT-4.1 generates the program structure with detailed courses, topics, and lessons.</p>
           </div>
           
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
-            <p>When you click <strong>"Generate Content"</strong>, the system will create the complete course content in your LMS using this approved structure.</p>
+            <p>You can edit, add, or remove topics and lessons before generating the full content.</p>
           </div>
           
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">4</div>
-            <p><strong>Full content generation</strong> includes detailed lesson content, case studies, FAQs, misconceptions, slide outlines, and voice-over scripts.</p>
+            <p>Final content generation creates comprehensive lessons with case studies, FAQs, slides, and voice-over scripts.</p>
           </div>
         </div>
         
@@ -236,8 +350,7 @@ const ReviewDashboard = () => {
             <div>
               <h3 className="font-medium text-blue-800">Review Before Generation</h3>
               <p className="text-blue-700">
-                You're currently reviewing the program structure. Make any necessary edits to course titles, 
-                topics, and lessons before generating the full content.
+                You're reviewing the program structure based on comprehensive AI research. Edit, add, or remove topics and lessons before generating full content.
               </p>
             </div>
           </div>
@@ -281,6 +394,16 @@ const ReviewDashboard = () => {
                   <span>Generate Content</span>
                 </Button>
                 
+                <Button
+                  onClick={handleRegenerateCourse}
+                  loading={regeneratingCourse}
+                  variant="secondary"
+                  className="w-full flex items-center justify-center space-x-2"
+                >
+                  <SafeIcon icon={FiRefreshCw} />
+                  <span>Regenerate Course</span>
+                </Button>
+                
                 <div className="text-sm text-gray-600">
                   <p><strong>Topics:</strong> {selectedCourse.topics?.length || 0}</p>
                   <p><strong>Total Lessons:</strong> {
@@ -294,7 +417,7 @@ const ReviewDashboard = () => {
             )}
           </Card>
           
-          {/* Added Info Card */}
+          {/* Info Card */}
           <Card className="p-6 mt-6 bg-gradient-to-r from-primary-50 to-primary-100 border-primary-200">
             <h3 className="font-medium text-primary-800 mb-2">Content Generation Details</h3>
             <p className="text-sm text-primary-700 mb-4">
@@ -389,6 +512,18 @@ const ReviewDashboard = () => {
                 )}
               </div>
 
+              {/* Add Topic Button */}
+              <div className="mb-6">
+                <Button
+                  onClick={handleAddTopic}
+                  variant="secondary"
+                  className="flex items-center space-x-2"
+                >
+                  <SafeIcon icon={FiPlus} />
+                  <span>Add New Topic</span>
+                </Button>
+              </div>
+
               {/* Topics and Lessons */}
               <div className="space-y-4">
                 {selectedCourse.topics?.map((topic, topicIndex) => (
@@ -438,6 +573,14 @@ const ReviewDashboard = () => {
                             </div>
                           )}
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteTopic(topic.id)}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          <SafeIcon icon={FiTrash2} />
+                        </Button>
                       </div>
 
                       {editingItem?.type === 'topic' && editingItem?.id === topic.id && editingItem?.field === 'topicLearningObjectiveDescription' ? (
@@ -477,6 +620,17 @@ const ReviewDashboard = () => {
                           className="overflow-hidden"
                         >
                           <div className="p-4 space-y-3">
+                            {/* Add Lesson Button */}
+                            <Button
+                              onClick={() => handleAddLesson(topic.id)}
+                              variant="ghost"
+                              size="sm"
+                              className="flex items-center space-x-2 text-primary-600"
+                            >
+                              <SafeIcon icon={FiPlus} />
+                              <span>Add Lesson</span>
+                            </Button>
+
                             {topic.lessons?.map((lesson, lessonIndex) => (
                               <div
                                 key={lesson.id}
@@ -536,6 +690,14 @@ const ReviewDashboard = () => {
                                     </div>
                                   )}
                                 </div>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleDeleteLesson(lesson.id)}
+                                  className="text-red-600 hover:text-red-700"
+                                >
+                                  <SafeIcon icon={FiTrash2} />
+                                </Button>
                               </div>
                             ))}
                           </div>

@@ -258,8 +258,158 @@ const generateVoiceOverOnly = async (apiKey, slideContent, lessonContent, abortS
   return await callOpenAI(apiKey, voiceOverPrompt, "You are an expert educational video scriptwriter.", false, 2, abortSignal);
 };
 
-// Enhanced course content generation with progress tracking
-export const generateCourseContent = async (course, lmsCredentials, apiKey, progressCallbacks = {}) => {
+// Generate content using RAG with vector store
+const generateLessonContentWithRAG = async (apiKey, vectorStoreId, lessonData, courseContext, topicContext, abortSignal = null) => {
+  try {
+    console.log(`Generating content using RAG with vector store: ${vectorStoreId}`);
+    
+    const systemPrompt = `Focus on actionable strategies that readers can implement immediately. 
+      Address emotional triggers. Emphasize benefits. Include common mistakes and how to avoid them. 
+      Use case studies or examples from real businesses to make content relatable. 
+      Provide templates and actionable checklists if applicable. Keep the text as action focused as possible. 
+      Quote recent research on this topic if any. Keep the tone motivating and supportive. 
+      Sound like Malcolm Gladwell or Daniel Pink for this content.
+
+      The full content for this section will include the below:
+      readingContent: The main text content (~1500-2000 words) in HTML format.
+
+      Generate the content for the section using the context below in HTML formatting.
+
+      Context:
+      Course: ${courseContext}
+      Topic: ${topicContext}
+      Use the attached files from vector store library as reference material and use it as relevant.`;
+
+    const userPrompt = `TASK
+      Develop a practical, step-by-step section on section title "${lessonData.lessonTitle}" 
+      with section description as "${lessonData.lessonDescription}" for the target audience from context. 
+      Generate the readingContent: The main text content (~1500-2000 words). Generate in HTML format.`;
+    
+    // Log the RAG API call attempt
+    try {
+      await supabase.from('api_logs_74621').insert([{
+        operation: 'rag_content_generation',
+        request_data: {
+          vector_store_id: vectorStoreId,
+          lesson_title: lessonData.lessonTitle
+        }
+      }]);
+    } catch (logError) {
+      console.error("Failed to log RAG API call:", logError);
+    }
+    
+    const startTime = new Date();
+    const response = await axios.post(
+      'https://api.openai.com/v1/responses',
+      {
+        model: "gpt-4.1-mini-2025-04-14",
+        tools: [
+          {
+            type: "file_search",
+            vector_store_ids: [vectorStoreId],
+            max_num_results: 3
+          }
+        ],
+        input: [
+          {
+            role: "system",
+            content: systemPrompt
+          },
+          {
+            role: "user",
+            content: userPrompt
+          }
+        ],
+        max_output_tokens: 2400
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 60000,
+        signal: abortSignal
+      }
+    );
+    
+    const endTime = new Date();
+    const duration = (endTime - startTime) / 1000;
+    console.log(`RAG API call completed in ${duration} seconds`);
+    
+    // Log successful RAG response
+    try {
+      await supabase.from('api_logs_74621').insert([{
+        operation: 'rag_content_success',
+        request_data: {
+          vector_store_id: vectorStoreId,
+          lesson_title: lessonData.lessonTitle,
+          duration_seconds: duration
+        }
+      }]);
+    } catch (logError) {
+      console.error("Failed to log RAG API success:", logError);
+    }
+    
+    return response.data.content[0].text;
+  } catch (error) {
+    if (error.name === 'AbortError' || error.code === 'ECONNABORTED') {
+      console.log('RAG request aborted by user');
+      throw new Error('Request aborted by user');
+    }
+    
+    console.error("Error generating content with RAG:", error);
+    
+    // Log the RAG error
+    try {
+      await supabase.from('api_logs_74621').insert([{
+        operation: 'rag_content_error',
+        error: error.message,
+        request_data: {
+          vector_store_id: vectorStoreId,
+          lesson_title: lessonData.lessonTitle
+        }
+      }]);
+    } catch (logError) {
+      console.error("Failed to log RAG API error:", logError);
+    }
+    
+    // Fallback to regular generation
+    console.log("Falling back to regular content generation");
+    return generateLessonContentWithoutRAG(apiKey, lessonData, courseContext, topicContext, abortSignal);
+  }
+};
+
+// Regular lesson content generation without RAG
+const generateLessonContentWithoutRAG = async (apiKey, lessonData, courseContext, topicContext, abortSignal = null) => {
+  const lessonContentPrompt = `
+    Course Context: ${courseContext}
+    Topic: ${topicContext}
+    Lesson Title: ${lessonData.lessonTitle}
+    Lesson Description: ${lessonData.lessonDescription}
+    
+    Generate comprehensive lesson content that is approximately 1500-2000 words. Include:
+    1. A structured lesson with clear sections and headings
+    2. Key concepts explained with examples
+    3. A relevant case study that illustrates the concepts
+    4. A FAQ section addressing common questions
+    5. A section on common misconceptions about the topic
+    6. Recommended additional readings or resources
+    
+    The content should be educational, engaging, and aligned with the course objectives.
+  `;
+  
+  return await callOpenAI(
+    apiKey,
+    lessonContentPrompt,
+    "You are an expert educator and content creator specializing in creating comprehensive, research-backed educational content.",
+    false,
+    2,
+    abortSignal
+  );
+};
+
+// Enhanced course content generation with progress tracking and RAG support
+export const generateCourseContent = async (course, lmsCredentials, apiKey, progressCallbacks = {}, vectorStoreAssignments = {}) => {
   const { 
     onProgress, 
     onTaskUpdate, 
@@ -330,6 +480,9 @@ export const generateCourseContent = async (course, lmsCredentials, apiKey, prog
         const topicId = topicResponse.data.data;
         console.log('Created topic with ID:', topicId, 'Title:', topic.topicTitle);
         
+        // Check if this topic has a vector store assigned
+        const topicVectorStoreId = vectorStoreAssignments[topic.id];
+        
         // Process each lesson in the topic
         for (const [lessonIndex, lesson] of topic.lessons.entries()) {
           try {
@@ -361,53 +514,73 @@ export const generateCourseContent = async (course, lmsCredentials, apiKey, prog
               }
             }]);
             
-            // Enhanced lesson content prompt with additional context
-            let lessonContentPrompt = `
-              Course Context: ${courseContext}
-              Topic Title: ${topic.topicTitle}
-              Topic Introduction: ${topic.topicIntroduction || topic.topicLearningObjectiveDescription}
-              Lesson Title: ${lesson.lessonTitle}
-              Lesson Description: ${lesson.lessonDescription}
-            `;
+            // Check if this lesson has a vector store assigned (overrides topic-level assignment)
+            const lessonVectorStoreId = vectorStoreAssignments[lesson.id];
+            const effectiveVectorStoreId = lessonVectorStoreId || topicVectorStoreId;
             
-            // Add topic additional context if available
-            if (topic.additionalContext && topic.additionalContext.trim()) {
-              lessonContentPrompt += `
-                TOPIC ADDITIONAL CONTEXT (Research/Statistics/Latest Findings): ${topic.additionalContext}
-                Please integrate this additional context throughout the lesson content where relevant.
-              `;
-            }
-            
-            // Add lesson-specific additional context if available
-            if (lesson.additionalContext && lesson.additionalContext.trim()) {
-              lessonContentPrompt += `
-                LESSON-SPECIFIC ADDITIONAL CONTEXT: ${lesson.additionalContext}
-                Please incorporate this lesson-specific context into the content.
-              `;
-            }
-            
-            lessonContentPrompt += `
-              Generate comprehensive lesson content that is approximately 1500-2000 words. Include:
-              1. A structured lesson with clear sections and headings
-              2. Key concepts explained with examples
-              3. A relevant case study that illustrates the concepts
-              4. A FAQ section addressing common questions
-              5. A section on common misconceptions about the topic
-              6. Recommended additional readings or resources
+            let lessonContent;
+            if (effectiveVectorStoreId) {
+              // Generate content using RAG
+              console.log(`Using RAG with vector store ${effectiveVectorStoreId} for lesson: ${lesson.lessonTitle}`);
+              lessonContent = await generateLessonContentWithRAG(
+                apiKey,
+                effectiveVectorStoreId,
+                lesson,
+                courseContext,
+                topic.topicLearningObjectiveDescription,
+                abortSignal
+              );
+            } else {
+              // Generate content without RAG, using standard approach
+              console.log(`Using standard content generation for lesson: ${lesson.lessonTitle}`);
               
-              The content should be educational, engaging, and aligned with the course objectives.
-            `;
-            
-            // Generate main lesson content
-            console.log("Generating main lesson content...");
-            const lessonContent = await callOpenAI(
-              apiKey,
-              lessonContentPrompt,
-              "You are an expert educator and content creator specializing in creating comprehensive, research-backed educational content.",
-              false,
-              2,
-              abortSignal
-            );
+              // Enhanced lesson content prompt with additional context
+              let lessonContentPrompt = `
+                Course Context: ${courseContext}
+                Topic Title: ${topic.topicTitle}
+                Topic Introduction: ${topic.topicIntroduction || topic.topicLearningObjectiveDescription}
+                Lesson Title: ${lesson.lessonTitle}
+                Lesson Description: ${lesson.lessonDescription}
+              `;
+              
+              // Add topic additional context if available
+              if (topic.additionalContext && topic.additionalContext.trim()) {
+                lessonContentPrompt += `
+                  TOPIC ADDITIONAL CONTEXT (Research/Statistics/Latest Findings): ${topic.additionalContext}
+                  Please integrate this additional context throughout the lesson content where relevant.
+                `;
+              }
+              
+              // Add lesson-specific additional context if available
+              if (lesson.additionalContext && lesson.additionalContext.trim()) {
+                lessonContentPrompt += `
+                  LESSON-SPECIFIC ADDITIONAL CONTEXT: ${lesson.additionalContext}
+                  Please incorporate this lesson-specific context into the content.
+                `;
+              }
+              
+              lessonContentPrompt += `
+                Generate comprehensive lesson content that is approximately 1500-2000 words. Include:
+                1. A structured lesson with clear sections and headings
+                2. Key concepts explained with examples
+                3. A relevant case study that illustrates the concepts
+                4. A FAQ section addressing common questions
+                5. A section on common misconceptions about the topic
+                6. Recommended additional readings or resources
+                
+                The content should be educational, engaging, and aligned with the course objectives.
+              `;
+              
+              // Generate main lesson content
+              lessonContent = await callOpenAI(
+                apiKey,
+                lessonContentPrompt,
+                "You are an expert educator and content creator specializing in creating comprehensive, research-backed educational content.",
+                false,
+                2,
+                abortSignal
+              );
+            }
             
             console.log("Main lesson content generated successfully.");
             completedTasks++;
@@ -495,7 +668,8 @@ export const generateCourseContent = async (course, lmsCredentials, apiKey, prog
                 lesson_title: lesson.lessonTitle,
                 content_length: lessonContent.length,
                 slides_length: slideContent.length,
-                voice_over_length: voiceOverScript.length
+                voice_over_length: voiceOverScript.length,
+                used_rag: !!effectiveVectorStoreId
               }
             }]);
             

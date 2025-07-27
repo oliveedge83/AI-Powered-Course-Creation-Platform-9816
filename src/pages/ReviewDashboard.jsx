@@ -7,12 +7,14 @@ import SafeIcon from '../common/SafeIcon';
 import { useProgramStore } from '../stores/programStore';
 import { useSettingsStore } from '../stores/settingsStore';
 import { useGeneration } from '../contexts/GenerationContext';
+import { useVectorStoreStore } from '../stores/vectorStoreStore';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import Input from '../components/ui/Input';
 import Textarea from '../components/ui/Textarea';
 import EnhancedStatusBar from '../components/ui/EnhancedStatusBar';
+import KnowledgeLibraryBadge from '../components/rag/KnowledgeLibraryBadge';
 import { generateCourseContent, generateCourseTopicsAndLessons } from '../services/enhancedAiService';
 
 const {
@@ -40,6 +42,7 @@ const ReviewDashboard = () => {
     getAbortSignal,
     checkPauseStatus
   } = useGeneration();
+  const { vectorStoreAssignments } = useVectorStoreStore();
 
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [editingItem, setEditingItem] = useState(null);
@@ -47,6 +50,7 @@ const ReviewDashboard = () => {
   const [generating, setGenerating] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [regeneratingCourse, setRegeneratingCourse] = useState(false);
+  const [activeApiKey, setActiveApiKey] = useState(null);
 
   // New state for additional context modals
   const [showTopicContextModal, setShowTopicContextModal] = useState(false);
@@ -55,6 +59,14 @@ const ReviewDashboard = () => {
   const [selectedLessonForContext, setSelectedLessonForContext] = useState(null);
   const [topicContextInput, setTopicContextInput] = useState('');
   const [lessonContextInput, setLessonContextInput] = useState('');
+  
+  // Get API key for vector stores
+  useEffect(() => {
+    const keys = getActiveOpenAIKeys();
+    if (keys.length > 0) {
+      setActiveApiKey(keys[0].key);
+    }
+  }, [getActiveOpenAIKeys]);
 
   useEffect(() => {
     const program = programs.find(p => p.id === programId);
@@ -311,12 +323,18 @@ const ReviewDashboard = () => {
     toast.loading('Generating full course content...', { id: 'generating-content' });
 
     try {
-      await generateCourseContent(selectedCourse, lmsCredentials, activeKeys[0].key, {
-        onProgress: updateProgress,
-        onTaskUpdate: updateTaskProgress,
-        checkPauseStatus,
-        getAbortSignal
-      });
+      await generateCourseContent(
+        selectedCourse, 
+        lmsCredentials, 
+        activeKeys[0].key, 
+        {
+          onProgress: updateProgress,
+          onTaskUpdate: updateTaskProgress,
+          checkPauseStatus,
+          getAbortSignal
+        },
+        vectorStoreAssignments
+      );
 
       updateProgram(programId, {
         status: 'in-progress',
@@ -373,6 +391,10 @@ const ReviewDashboard = () => {
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">4</div>
             <p>Final content generation creates comprehensive lessons with case studies, FAQs, slides, and voice-over scripts.</p>
+          </div>
+          <div className="flex items-start space-x-3">
+            <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">5</div>
+            <p>Knowledge libraries can be attached to topics or lessons to enhance content with relevant information from your documents.</p>
           </div>
         </div>
         <div className="mt-6 flex justify-end">
@@ -568,6 +590,7 @@ const ReviewDashboard = () => {
               <h3 className="font-medium text-blue-800">Review Before Generation</h3>
               <p className="text-blue-700">
                 You're reviewing the program structure based on comprehensive AI research. Edit, add, or remove topics and lessons before generating full content.
+                You can also add knowledge libraries to topics or lessons to enhance content with relevant information.
               </p>
             </div>
           </div>
@@ -653,6 +676,39 @@ const ReviewDashboard = () => {
               <li className="flex items-start">
                 <SafeIcon icon={FiPlay} className="mr-2 text-primary-600 mt-0.5" />
                 <span>Voice-over scripts for each lesson</span>
+              </li>
+              <li className="flex items-start">
+                <SafeIcon icon={FiDatabase} className="mr-2 text-primary-600 mt-0.5" />
+                <span>Knowledge library integration for relevant content</span>
+              </li>
+            </ul>
+          </Card>
+
+          {/* Knowledge Library Info */}
+          <Card className="p-6 mt-6 bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
+            <div className="flex items-center space-x-2 mb-2">
+              <SafeIcon icon={FiDatabase} className="text-blue-600" />
+              <h3 className="font-medium text-blue-800">Knowledge Libraries</h3>
+            </div>
+            <p className="text-sm text-blue-700 mb-4">
+              Enhance your content by adding knowledge libraries:
+            </p>
+            <ul className="text-sm text-blue-700 space-y-2">
+              <li className="flex items-start">
+                <div className="w-5 h-5 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0 mr-2">1</div>
+                <span>Add a library to a topic to use for all its lessons</span>
+              </li>
+              <li className="flex items-start">
+                <div className="w-5 h-5 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0 mr-2">2</div>
+                <span>Add a library to a specific lesson to override topic-level library</span>
+              </li>
+              <li className="flex items-start">
+                <div className="w-5 h-5 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0 mr-2">3</div>
+                <span>Upload PDFs, DOCXs, and more to create custom libraries</span>
+              </li>
+              <li className="flex items-start">
+                <div className="w-5 h-5 rounded-full bg-blue-200 text-blue-700 flex items-center justify-center flex-shrink-0 mr-2">4</div>
+                <span>AI will use your documents as context for generation</span>
               </li>
             </ul>
           </Card>
@@ -746,10 +802,10 @@ const ReviewDashboard = () => {
                   >
                     {/* Topic Header */}
                     <div className="p-4 bg-gray-50 border-b border-gray-200">
-                      <div className="flex items-center space-x-3">
+                      <div className="flex items-center space-x-2">
                         <button
                           onClick={() => toggleTopic(topic.id)}
-                          className="text-gray-400 hover:text-gray-600"
+                          className="text-gray-400 hover:text-gray-600 p-1"
                         >
                           <SafeIcon icon={expandedTopics.has(topic.id) ? FiChevronDown : FiChevronRight} />
                         </button>
@@ -781,6 +837,16 @@ const ReviewDashboard = () => {
                             </div>
                           )}
                         </div>
+                        
+                        {/* Knowledge Library Button for Topic */}
+                        {activeApiKey && (
+                          <KnowledgeLibraryBadge
+                            itemId={topic.id}
+                            itemType="topic"
+                            apiKey={activeApiKey}
+                          />
+                        )}
+                        
                         {/* Topic Additional Context Button */}
                         <Button
                           variant="ghost"
@@ -791,6 +857,7 @@ const ReviewDashboard = () => {
                         >
                           <SafeIcon icon={FiDatabase} />
                         </Button>
+                        
                         <Button
                           variant="ghost"
                           size="sm"
@@ -827,15 +894,24 @@ const ReviewDashboard = () => {
                         </div>
                       )}
 
-                      {/* Show additional context indicator */}
-                      {topic.additionalContext && (
-                        <div className="mt-2 ml-6">
+                      {/* Show indicators */}
+                      <div className="mt-2 ml-6 flex flex-wrap gap-2">
+                        {/* Show additional context indicator */}
+                        {topic.additionalContext && (
                           <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary-100 text-primary-700">
                             <SafeIcon icon={FiDatabase} className="mr-1" />
                             Additional context added
                           </div>
-                        </div>
-                      )}
+                        )}
+                        
+                        {/* Show knowledge library indicator */}
+                        {vectorStoreAssignments[topic.id] && (
+                          <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
+                            <SafeIcon icon={FiDatabase} className="mr-1" />
+                            Knowledge library attached
+                          </div>
+                        )}
+                      </div>
                     </div>
 
                     {/* Lessons */}
@@ -862,7 +938,7 @@ const ReviewDashboard = () => {
                             {topic.lessons?.map((lesson, lessonIndex) => (
                               <div
                                 key={lesson.id}
-                                className="flex items-center space-x-3 p-3 bg-white border border-gray-100 rounded-lg"
+                                className="flex items-center space-x-2 p-3 bg-white border border-gray-100 rounded-lg"
                               >
                                 <SafeIcon icon={FiList} className="text-blue-600" />
                                 <div className="flex-1">
@@ -918,16 +994,35 @@ const ReviewDashboard = () => {
                                     </div>
                                   )}
 
-                                  {/* Show lesson additional context indicator */}
-                                  {lesson.additionalContext && (
-                                    <div className="mt-2">
+                                  {/* Show indicators */}
+                                  <div className="mt-2 flex flex-wrap gap-2">
+                                    {/* Show lesson additional context indicator */}
+                                    {lesson.additionalContext && (
                                       <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
                                         <SafeIcon icon={FiFileText} className="mr-1" />
                                         Lesson context added
                                       </div>
-                                    </div>
-                                  )}
+                                    )}
+                                    
+                                    {/* Show knowledge library indicator */}
+                                    {vectorStoreAssignments[lesson.id] && (
+                                      <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">
+                                        <SafeIcon icon={FiDatabase} className="mr-1" />
+                                        Custom library attached
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
+                                
+                                {/* Knowledge Library Button for Lesson */}
+                                {activeApiKey && (
+                                  <KnowledgeLibraryBadge
+                                    itemId={lesson.id}
+                                    itemType="lesson"
+                                    apiKey={activeApiKey}
+                                  />
+                                )}
+                                
                                 {/* Lesson Additional Context Button */}
                                 <Button
                                   variant="ghost"
@@ -938,6 +1033,7 @@ const ReviewDashboard = () => {
                                 >
                                   <SafeIcon icon={FiFileText} />
                                 </Button>
+                                
                                 <Button
                                   variant="ghost"
                                   size="sm"

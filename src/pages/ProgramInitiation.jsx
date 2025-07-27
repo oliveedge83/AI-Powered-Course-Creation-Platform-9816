@@ -7,11 +7,13 @@ import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import { useProgramStore } from '../stores/programStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useGeneration } from '../contexts/GenerationContext';
 import Card from '../components/ui/Card';
 import Input from '../components/ui/Input';
 import Textarea from '../components/ui/Textarea';
 import Select from '../components/ui/Select';
 import Button from '../components/ui/Button';
+import StatusBar from '../components/ui/StatusBar';
 import { generateProgramStructure } from '../services/aiService';
 
 const { FiTarget, FiBook, FiSettings, FiZap } = FiIcons;
@@ -21,6 +23,14 @@ const ProgramInitiation = () => {
   const navigate = useNavigate();
   const { addProgram } = useProgramStore();
   const { getActiveOpenAIKeys, getDecryptedLMSCredentials } = useSettingsStore();
+  const { 
+    generationStatus, 
+    startGeneration, 
+    updateProgress, 
+    completeGeneration, 
+    failGeneration,
+    hideStatus
+  } = useGeneration();
   
   const { register, handleSubmit, formState: { errors }, watch } = useForm({
     defaultValues: {
@@ -41,25 +51,33 @@ const ProgramInitiation = () => {
   const onSubmit = async (data) => {
     const activeKeys = getActiveOpenAIKeys();
     const lmsCredentials = getDecryptedLMSCredentials();
-    
+
     if (activeKeys.length === 0) {
       toast.error('Please add at least one OpenAI API key in settings.');
       navigate('/settings');
       return;
     }
-    
+
     if (!lmsCredentials.username || !lmsCredentials.password) {
       toast.error('Please configure your LMS credentials in settings.');
       navigate('/settings');
       return;
     }
-    
+
     setLoading(true);
+    startGeneration('Initiating program structure generation...');
+    
     try {
       toast.loading('Generating program structure with AI...', { id: 'generating' });
       
+      // Update status to research phase
+      updateProgress(15, 'Conducting research on your niche using AI...', 'research');
+      
       // Generate program structure using AI
       const programStructure = await generateProgramStructure(data, activeKeys[0].key);
+      
+      // Update status to structure generation
+      updateProgress(60, 'Creating comprehensive program structure...', 'structure');
       
       toast.success('Program structure generated!', { id: 'generating' });
       
@@ -70,10 +88,18 @@ const ProgramInitiation = () => {
         status: 'draft'
       });
       
-      navigate(`/review/${newProgram.id}`);
+      // Update status to completion
+      updateProgress(90, 'Finalizing program structure...', 'finalizing');
+      
+      setTimeout(() => {
+        completeGeneration('Program structure generated successfully!');
+        navigate(`/review/${newProgram.id}`);
+      }, 1000);
+      
     } catch (error) {
       console.error('Error generating program:', error);
       toast.error('Failed to generate program structure. Please try again.', { id: 'generating' });
+      failGeneration('Failed to generate program structure. Please check your API keys and try again.');
     } finally {
       setLoading(false);
     }
@@ -81,6 +107,14 @@ const ProgramInitiation = () => {
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <StatusBar 
+        visible={generationStatus.visible}
+        type={generationStatus.type}
+        message={generationStatus.message}
+        progress={generationStatus.progress}
+        onClose={hideStatus}
+      />
+      
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

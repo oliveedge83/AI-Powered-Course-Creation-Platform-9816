@@ -28,7 +28,7 @@ Course Context will include:
 - "instructionalDesignFramework": Recommend a framework suitable for a multi-course, advanced program.
 
 Generate the "course context" paragraph now. The output should be strictly a text paragraph with numbered list of parameters that can be passed on to the next node.
-`;
+    `;
 
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
@@ -74,8 +74,7 @@ export const generateProgramStructure = async (programData, apiKey) => {
     const structurePrompt = `
 Based on the following comprehensive course context and program requirements, create a detailed MicroMasters program structure.
 
-Course Context:
-${courseContext}
+Course Context: ${courseContext}
 
 Program Requirements:
 - Number of courses: ${programData.numberOfCourses}
@@ -103,11 +102,13 @@ Format your response as a JSON object with this structure:
           "id": "topic-1-1",
           "topicTitle": "Specific and actionable topic title with clear learning objective",
           "topicLearningObjectiveDescription": "Detailed learning objectives and outcomes for this topic (2-3 comprehensive sentences explaining what students will master)",
+          "additionalContext": "",
           "lessons": [
             {
               "id": "lesson-1-1-1",
               "lessonTitle": "Specific and practical lesson title",
-              "lessonDescription": "Comprehensive 150-200 word description covering: lesson objectives, key concepts to be learned, practical applications, activities students will engage in, expected outcomes, and how this lesson builds toward the topic objectives. Include specific skills and knowledge students will gain."
+              "lessonDescription": "Comprehensive 150-200 word description covering: lesson objectives, key concepts to be learned, practical applications, activities students will engage in, expected outcomes, and how this lesson builds toward the topic objectives. Include specific skills and knowledge students will gain.",
+              "additionalContext": ""
             }
           ]
         }
@@ -124,7 +125,7 @@ ENSURE:
 - Progressive difficulty and logical flow throughout
 - Include hands-on, project-based learning elements
 - All content aligns with professional MicroMasters standards
-`;
+    `;
 
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
@@ -155,8 +156,8 @@ ENSURE:
     
     // Find the JSON object in the response
     const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/{[\s\S]*}/);
-    let parsedData;
     
+    let parsedData;
     if (jsonMatch) {
       const jsonString = jsonMatch[1] || jsonMatch[0];
       parsedData = JSON.parse(jsonString);
@@ -191,6 +192,7 @@ Act as an expert curriculum architect. You are designing one course within a lar
 Overall Context: ${summaryProgramContext}
 - Current Course being designed: ${course.courseTitle}
 - Course's Role in Program, Learning objectives and Course description: ${course.courseDescription}
+
 Must Have aspects in the course: ${mustHaveAspects}
 Other Design Considerations: ${designConsiderations}
 
@@ -205,6 +207,8 @@ CRITICAL REQUIREMENTS:
 - Each lesson description must be 150-200 words explaining learning objectives, activities, and outcomes
 - Topics must build progressively and logically
 - Content must be practical and industry-relevant
+- Each topic and lesson must have unique, relevant titles and descriptions
+- No generic placeholder content - everything must be specific to this course
 
 The JSON object must have this exact structure:
 {
@@ -213,11 +217,13 @@ The JSON object must have this exact structure:
       "id": "topic-new-1",
       "topicTitle": "Comprehensive topic title with clear learning focus",
       "topicLearningObjectiveDescription": "Detailed 2-3 sentence paragraph explaining what students will master in this topic, including specific skills and knowledge outcomes",
+      "additionalContext": "",
       "lessons": [
         {
           "id": "lesson-new-1-1",
           "lessonTitle": "Specific and actionable lesson title",
-          "lessonDescription": "Comprehensive 150-200 word description covering: (1) specific learning objectives for this lesson, (2) key concepts and skills students will learn, (3) practical activities and exercises they will complete, (4) real-world applications and examples, (5) how this lesson contributes to the overall topic mastery, and (6) expected outcomes and deliverables. Be specific about what students will be able to do after completing this lesson."
+          "lessonDescription": "Comprehensive 150-200 word description covering: (1) specific learning objectives for this lesson, (2) key concepts and skills students will learn, (3) practical activities and exercises they will complete, (4) real-world applications and examples, (5) how this lesson contributes to the overall topic mastery, and (6) expected outcomes and deliverables. Be specific about what students will be able to do after completing this lesson.",
+          "additionalContext": ""
         }
       ]
     }
@@ -225,7 +231,7 @@ The JSON object must have this exact structure:
 }
 
 Generate exactly 5-6 topics with 4-5 lessons each. Each lesson description must be detailed and comprehensive (150-200 words).
-`;
+    `;
 
     const response = await axios.post(
       'https://api.openai.com/v1/chat/completions',
@@ -234,7 +240,7 @@ Generate exactly 5-6 topics with 4-5 lessons each. Each lesson description must 
         messages: [
           {
             role: "system",
-            content: "You are an expert instructional designer specializing in professional education. Create detailed, practical course content with comprehensive lesson descriptions."
+            content: "You are an expert instructional designer specializing in professional education. Create detailed, practical course content with comprehensive lesson descriptions. Each lesson must be unique, specific, and tailored to the course context."
           },
           {
             role: "user",
@@ -266,7 +272,7 @@ Generate exactly 5-6 topics with 4-5 lessons each. Each lesson description must 
   }
 };
 
-// Fallback context generator 
+// Fallback context generator
 const generateFallbackContext = (programData) => {
   return `
 Course Context: This MicroMasters program in ${programData.niche} is designed for working professionals seeking to advance their careers through comprehensive, industry-relevant education.
@@ -280,37 +286,97 @@ Course Context: This MicroMasters program in ${programData.niche} is designed fo
 7. Most Impactful Outcomes: Promotion opportunities, salary increases, leadership roles, and industry recognition.
 8. Foundational Knowledge: Basic understanding of ${programData.niche} concepts and professional experience.
 9. Instructional Design Framework: ${programData.instructionalDesignModel} approach with practical applications.
-`;
+  `;
 };
 
-// Enhanced mock data generator with more comprehensive content
+// Enhanced mock data generator with unique content for each topic and lesson
 const generateMockProgramStructure = (programData) => {
   const courses = [];
   const numberOfCourses = parseInt(programData.numberOfCourses);
-
+  
+  // Course title templates for variety
+  const courseTitleTemplates = [
+    `Advanced ${programData.niche}: Foundations and Strategy`,
+    `${programData.niche} Mastery: Implementation and Best Practices`,
+    `Strategic ${programData.niche}: Leadership and Innovation`,
+    `Applied ${programData.niche}: Tools and Techniques`,
+    `${programData.niche} Systems: Integration and Optimization`,
+    `${programData.niche} in Practice: Case Studies and Applications`
+  ];
+  
+  // Topic title templates for variety
+  const topicTemplates = [
+    `Fundamentals of %s: Core Principles`,
+    `Advanced %s Strategies and Frameworks`,
+    `%s Implementation and Project Management`,
+    `%s Analytics and Performance Measurement`,
+    `Innovation and Emerging Trends in %s`,
+    `%s Leadership and Organizational Change`,
+    `Ethical Considerations in %s`,
+    `%s Case Studies and Industry Applications`,
+    `Global Perspectives on %s`,
+    `Future of %s: Emerging Technologies and Approaches`
+  ];
+  
+  // Lesson title templates for variety
+  const lessonTemplates = [
+    `Understanding %s: Key Concepts and Definitions`,
+    `Practical Applications of %s in Industry`,
+    `%s Frameworks and Methodologies`,
+    `%s Tools and Technologies: Hands-on Practice`,
+    `Case Analysis: %s in Action`,
+    `%s Problem-Solving Workshop`,
+    `Measuring Success in %s Initiatives`,
+    `%s Strategy Development`,
+    `Ethical Challenges in %s Implementation`,
+    `Future Trends and Innovations in %s`,
+    `%s Risk Management and Mitigation`,
+    `Building a Career in %s`,
+    `%s Communication and Stakeholder Management`,
+    `%s Project Planning and Execution`,
+    `Advanced %s Techniques and Approaches`
+  ];
+  
   for (let i = 1; i <= numberOfCourses; i++) {
+    // Select a course title template or use default if we run out
+    const courseTitle = courseTitleTemplates[i - 1] || `Advanced ${programData.niche} - Course ${i}`;
+    
     const course = {
       id: `course-${i}`,
-      courseTitle: `Advanced ${programData.niche} - Course ${i}: Strategic Implementation and Mastery`,
-      courseDescription: `This comprehensive course covers essential aspects of ${programData.niche} with practical applications, real-world case studies, and hands-on projects. Students will develop critical skills through interactive learning, industry-relevant assignments, and collaborative projects that prepare them for advanced professional roles.`,
+      courseTitle: courseTitle,
+      courseDescription: `This comprehensive course explores the critical aspects of ${programData.niche} with a focus on practical applications and industry-relevant skills. Students will develop proficiency in key methodologies, analyze real-world case studies, and participate in hands-on projects. By course completion, participants will possess the expertise to implement effective solutions and drive innovation in their professional environments.`,
       topics: []
     };
 
-    // Generate exactly 5 topics per course
-    for (let j = 1; j <= 5; j++) {
+    // Generate unique topics for this course
+    const numTopics = 5 + (i % 2); // 5 or 6 topics
+    for (let j = 1; j <= numTopics; j++) {
+      // Select a topic template and format it with course-specific terms
+      const topicIndex = (i + j - 2) % topicTemplates.length;
+      const topicNiche = programData.niche.split(' ')[0]; // Use first word of niche for better formatting
+      const topicTitle = topicTemplates[topicIndex].replace('%s', topicNiche);
+      
       const topic = {
         id: `topic-${i}-${j}`,
-        topicTitle: `Topic ${j}: Advanced ${programData.niche} Strategies and Professional Implementation`,
-        topicLearningObjectiveDescription: `Master the fundamental principles and advanced techniques in this critical area of ${programData.niche}. Students will learn to apply theoretical concepts to real-world scenarios, develop practical solutions, and demonstrate proficiency in industry-standard practices.`,
+        topicTitle: topicTitle,
+        topicLearningObjectiveDescription: `In this topic, students will master fundamental concepts and advanced techniques in ${topicTitle.toLowerCase()}. They will learn to apply theoretical frameworks to real-world challenges, develop practical solutions using industry-standard approaches, and critically evaluate implementation strategies for different organizational contexts.`,
+        additionalContext: '',
         lessons: []
       };
 
-      // Generate exactly 4 lessons per topic
-      for (let k = 1; k <= 4; k++) {
+      // Generate unique lessons for this topic
+      const numLessons = 4 + (j % 2); // 4 or 5 lessons per topic
+      for (let k = 1; k <= numLessons; k++) {
+        // Select a lesson template and format it with topic-specific terms
+        const lessonIndex = (i + j + k - 3) % lessonTemplates.length;
+        const lessonSubject = topicTitle.split(':')[0].split(' ').slice(0, 2).join(' '); // Use first two words of topic title
+        const lessonTitle = lessonTemplates[lessonIndex].replace('%s', lessonSubject);
+        
         const lesson = {
           id: `lesson-${i}-${j}-${k}`,
-          lessonTitle: `Lesson ${k}: Practical Implementation and Case Study Analysis`,
-          lessonDescription: `This comprehensive lesson focuses on practical implementation of ${programData.niche} concepts through hands-on activities and real-world case studies. Students will engage in interactive exercises, analyze industry examples, and develop practical solutions to common challenges. The lesson includes guided practice sessions, peer collaboration opportunities, and individual assignments that reinforce key learning objectives. By the end of this lesson, students will be able to apply theoretical knowledge to practical situations, demonstrate proficiency in relevant tools and techniques, and articulate solutions to complex problems. The lesson culminates in a practical project that showcases student understanding and provides portfolio material for professional development. Assessment includes both formative feedback during activities and summative evaluation of final deliverables.`
+          lessonTitle: lessonTitle,
+          lessonDescription: `This lesson focuses on ${lessonTitle.toLowerCase()} within the broader context of ${topicTitle.toLowerCase()}. Students will explore key concepts including ${getRandomConcepts(programData.niche, 3).join(', ')}, and understand their practical applications in real-world scenarios. Through interactive activities, case analyses, and guided practice, participants will develop the skills to implement these concepts in diverse professional situations. The lesson includes collaborative discussions, hands-on exercises with industry tools, and a practical assignment that requires students to apply their learning to a realistic challenge. By completion, students will be able to confidently analyze situations, select appropriate methodologies, and implement effective solutions that align with organizational goals and industry best practices.`,
+          additionalContext: ''
         };
         topic.lessons.push(lesson);
       }
@@ -326,7 +392,60 @@ const generateMockProgramStructure = (programData) => {
   };
 };
 
-// Function to generate course content for LMS (unchanged)
+// Helper function to generate random concepts related to a niche
+const getRandomConcepts = (niche, count) => {
+  const conceptSets = {
+    'Data Science': [
+      'predictive modeling', 'statistical analysis', 'machine learning algorithms', 
+      'data visualization techniques', 'feature engineering', 'neural networks',
+      'decision trees', 'clustering methods', 'regression analysis', 'natural language processing'
+    ],
+    'Marketing': [
+      'consumer behavior analysis', 'market segmentation', 'brand positioning', 
+      'digital marketing strategies', 'conversion optimization', 'content marketing',
+      'social media engagement', 'marketing analytics', 'customer journey mapping', 'SEO techniques'
+    ],
+    'Leadership': [
+      'team motivation strategies', 'conflict resolution', 'change management', 
+      'strategic decision making', 'emotional intelligence', 'organizational culture',
+      'performance management', 'delegation techniques', 'stakeholder communication', 'vision development'
+    ],
+    'Finance': [
+      'financial modeling', 'risk assessment', 'investment strategies', 
+      'portfolio management', 'valuation methods', 'capital budgeting',
+      'financial statement analysis', 'cash flow optimization', 'tax planning', 'wealth management'
+    ],
+    'Technology': [
+      'system architecture', 'cloud computing solutions', 'cybersecurity protocols', 
+      'agile methodologies', 'database optimization', 'API integration',
+      'DevOps practices', 'software testing strategies', 'UI/UX design principles', 'blockchain applications'
+    ],
+    'default': [
+      'strategic planning', 'operational efficiency', 'performance metrics', 
+      'best practices', 'implementation frameworks', 'quality assurance',
+      'process optimization', 'resource allocation', 'stakeholder management', 'continuous improvement'
+    ]
+  };
+  
+  // Find the most relevant concept set or use default
+  const nicheWords = niche.toLowerCase().split(' ');
+  let conceptPool = conceptSets.default;
+  
+  for (const key of Object.keys(conceptSets)) {
+    if (nicheWords.some(word => key.toLowerCase().includes(word))) {
+      conceptPool = conceptSets[key];
+      break;
+    }
+  }
+  
+  // Select random unique concepts
+  const selected = [];
+  const shuffled = [...conceptPool].sort(() => 0.5 - Math.random());
+  
+  return shuffled.slice(0, count);
+};
+
+// Function to generate course content for LMS with enhanced context handling
 export const generateCourseContent = async (course, lmsCredentials, apiKey) => {
   try {
     console.log("Generating full course content with OpenAI...");
@@ -348,13 +467,14 @@ Topic Title: ${topic.topicTitle}
 Topic Learning Objective Description: ${topic.topicLearningObjectiveDescription}
 
 Please generate a detailed topicIntroduction and an immersiveMethodBrief. The immersiveMethodBrief should describe a practical activity or project related to the topic that helps learners apply the concepts.
-`;
+        `;
 
         const topicDetailsResponse = await callOpenAI(
           apiKey,
           topicDetailsPrompt,
           "You are an expert instructional designer."
         );
+        
         topic.topicIntroduction = topicDetailsResponse;
       }
 
@@ -363,7 +483,7 @@ Course Title: ${course.courseTitle}
 Course Description: ${course.courseDescription}
 
 Generate a brief, concise context of the overall course based on the course title and description provided. This context will be used as a high-level overview for subsequent lesson content generation.
-`;
+      `;
 
       const courseContext = await callOpenAI(
         apiKey,
@@ -373,13 +493,36 @@ Generate a brief, concise context of the overall course based on the course titl
 
       for (const lesson of topic.lessons) {
         console.log(`Generating full content for lesson: ${lesson.lessonTitle}`);
-
-        const lessonContentPrompt = `
+        
+        // Enhanced lesson content prompt with additional context
+        let lessonContentPrompt = `
 Course Context: ${courseContext}
 Topic Title: ${topic.topicTitle}
 Topic Introduction: ${topic.topicIntroduction || topic.topicLearningObjectiveDescription}
 Lesson Title: ${lesson.lessonTitle}
-Lesson Description: ${lesson.lessonDescription}
+Lesson Description: ${lesson.lessonDescription}`;
+
+        // Add topic additional context if available
+        if (topic.additionalContext && topic.additionalContext.trim()) {
+          lessonContentPrompt += `
+
+TOPIC ADDITIONAL CONTEXT (Research/Statistics/Latest Findings):
+${topic.additionalContext}
+
+Please integrate this additional context throughout the lesson content where relevant.`;
+        }
+
+        // Add lesson-specific additional context if available
+        if (lesson.additionalContext && lesson.additionalContext.trim()) {
+          lessonContentPrompt += `
+
+LESSON-SPECIFIC ADDITIONAL CONTEXT:
+${lesson.additionalContext}
+
+Please incorporate this lesson-specific context into the content.`;
+        }
+
+        lessonContentPrompt += `
 
 Generate comprehensive lesson content that is approximately 1500-2000 words. Include:
 1. A structured lesson with clear sections and headings
@@ -389,13 +532,19 @@ Generate comprehensive lesson content that is approximately 1500-2000 words. Inc
 5. A section on common misconceptions about the topic
 6. Recommended additional readings or resources
 
-The content should be educational, engaging, and aligned with the course objectives.
-`;
+The content should be educational, engaging, and aligned with the course objectives.`;
+
+        // If additional context was provided, add specific instructions
+        if ((topic.additionalContext && topic.additionalContext.trim()) || (lesson.additionalContext && lesson.additionalContext.trim())) {
+          lessonContentPrompt += `
+
+IMPORTANT: Make sure to weave in the provided additional context naturally throughout the lesson content, using it to enhance explanations, provide current examples, support key points with statistics or research, and add credibility to the content.`;
+        }
 
         const lessonContent = await callOpenAI(
           apiKey,
           lessonContentPrompt,
-          "You are an expert educator and content creator."
+          "You are an expert educator and content creator specializing in creating comprehensive, research-backed educational content."
         );
 
         const slidesPrompt = `
@@ -413,7 +562,7 @@ SLIDE 2: [Title]
 And so on. Create 8-12 slides that cover the main concepts.
 
 Lesson Content: ${lessonContent.substring(0, 3000)}...
-`;
+        `;
 
         const slideContent = await callOpenAI(
           apiKey,
@@ -427,12 +576,9 @@ Based on the following presentation slides and the lesson content, write a detai
 Presentation Slides: ${slideContent}
 
 Format the voice-over script with timing indicators for each slide, like:
-[SLIDE 1 - 00:00-00:45]
-"Welcome to today's lesson on... [script continues]"
-
-[SLIDE 2 - 00:45-01:30]
-"Now let's examine... [script continues]"
-`;
+[SLIDE 1 - 00:00-00:45] "Welcome to today's lesson on... [script continues]"
+[SLIDE 2 - 00:45-01:30] "Now let's examine... [script continues]"
+        `;
 
         const voiceOverScript = await callOpenAI(
           apiKey,
@@ -468,8 +614,14 @@ const callOpenAI = async (apiKey, prompt, systemPrompt, useGPT4 = false) => {
       {
         model: model,
         messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: prompt }
+          {
+            role: "system",
+            content: systemPrompt
+          },
+          {
+            role: "user",
+            content: prompt
+          }
         ],
         temperature: 0.7
       },

@@ -6,29 +6,55 @@ import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../common/SafeIcon';
 import { useProgramStore } from '../stores/programStore';
 import { useSettingsStore } from '../stores/settingsStore';
+import { useGeneration } from '../contexts/GenerationContext';
 import Card from '../components/ui/Card';
 import Button from '../components/ui/Button';
 import Select from '../components/ui/Select';
 import Input from '../components/ui/Input';
 import Textarea from '../components/ui/Textarea';
-import { generateCourseContent, generateCourseTopicsAndLessons } from '../services/aiService';
+import EnhancedStatusBar from '../components/ui/EnhancedStatusBar';
+import { generateCourseContent, generateCourseTopicsAndLessons } from '../services/enhancedAiService';
 
-const { FiEdit3, FiSave, FiPlay, FiChevronDown, FiChevronRight, FiBook, FiTarget, FiList, FiInfo, FiPlus, FiTrash2, FiRefreshCw } = FiIcons;
+const {
+  FiEdit3, FiSave, FiPlay, FiChevronDown, FiChevronRight, FiBook, FiTarget, FiList, FiInfo, FiPlus, FiTrash2, FiRefreshCw, FiFileText, FiX, FiDatabase
+} = FiIcons;
 
 const ReviewDashboard = () => {
   const { programId } = useParams();
   const navigate = useNavigate();
   const { programs, currentProgram, setCurrentProgram, updateProgram } = useProgramStore();
   const { getActiveOpenAIKeys, getDecryptedLMSCredentials } = useSettingsStore();
-  
+  const { 
+    generationStatus, 
+    startGeneration, 
+    updateProgress, 
+    updateTaskProgress,
+    pauseGeneration,
+    resumeGeneration,
+    abortGeneration,
+    completeGeneration, 
+    failGeneration, 
+    minimizeStatus,
+    maximizeStatus,
+    hideStatus,
+    getAbortSignal,
+    checkPauseStatus
+  } = useGeneration();
+
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [editingItem, setEditingItem] = useState(null);
   const [expandedTopics, setExpandedTopics] = useState(new Set());
   const [generating, setGenerating] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
-  const [addingTopic, setAddingTopic] = useState(false);
-  const [addingLesson, setAddingLesson] = useState(null);
   const [regeneratingCourse, setRegeneratingCourse] = useState(false);
+
+  // New state for additional context modals
+  const [showTopicContextModal, setShowTopicContextModal] = useState(false);
+  const [showLessonContextModal, setShowLessonContextModal] = useState(false);
+  const [selectedTopicForContext, setSelectedTopicForContext] = useState(null);
+  const [selectedLessonForContext, setSelectedLessonForContext] = useState(null);
+  const [topicContextInput, setTopicContextInput] = useState('');
+  const [lessonContextInput, setLessonContextInput] = useState('');
 
   useEffect(() => {
     const program = programs.find(p => p.id === programId);
@@ -36,7 +62,6 @@ const ReviewDashboard = () => {
       setCurrentProgram(program);
       if (program.courses && program.courses.length > 0) {
         setSelectedCourseId(program.courses[0].id);
-        
         if (program.courses[0].topics && program.courses[0].topics.length > 0) {
           setExpandedTopics(new Set([program.courses[0].topics[0].id]));
         }
@@ -54,10 +79,10 @@ const ReviewDashboard = () => {
 
   const handleSave = () => {
     if (!editingItem) return;
-    
+
     const { type, id, field, value } = editingItem;
     const updatedProgram = { ...currentProgram };
-    
+
     if (type === 'course') {
       const course = updatedProgram.courses.find(c => c.id === id);
       if (course) {
@@ -77,7 +102,7 @@ const ReviewDashboard = () => {
         lesson[field] = value;
       }
     }
-    
+
     updateProgram(programId, updatedProgram);
     setEditingItem(null);
     toast.success('Changes saved successfully!');
@@ -85,14 +110,15 @@ const ReviewDashboard = () => {
 
   const handleAddTopic = () => {
     if (!selectedCourse) return;
-    
+
     const newTopic = {
       id: `topic-${Date.now()}`,
       topicTitle: 'New Topic',
       topicLearningObjectiveDescription: 'Learning objectives for this topic',
+      additionalContext: '',
       lessons: []
     };
-    
+
     const updatedProgram = { ...currentProgram };
     const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
     if (course) {
@@ -107,13 +133,13 @@ const ReviewDashboard = () => {
     const newLesson = {
       id: `lesson-${Date.now()}`,
       lessonTitle: 'New Lesson',
-      lessonDescription: 'Lesson description and objectives'
+      lessonDescription: 'Lesson description and objectives',
+      additionalContext: ''
     };
-    
+
     const updatedProgram = { ...currentProgram };
     const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
     const topic = course?.topics?.find(t => t.id === topicId);
-    
     if (topic) {
       topic.lessons = [...(topic.lessons || []), newLesson];
       updateProgram(programId, updatedProgram);
@@ -124,16 +150,12 @@ const ReviewDashboard = () => {
   const handleDeleteTopic = (topicId) => {
     const updatedProgram = { ...currentProgram };
     const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
-    
     if (course) {
       course.topics = course.topics.filter(t => t.id !== topicId);
       updateProgram(programId, updatedProgram);
-      
-      // Remove from expanded topics
       const newExpanded = new Set(expandedTopics);
       newExpanded.delete(topicId);
       setExpandedTopics(newExpanded);
-      
       toast.success('Topic deleted successfully!');
     }
   };
@@ -142,7 +164,6 @@ const ReviewDashboard = () => {
     const updatedProgram = { ...currentProgram };
     const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
     const topic = course?.topics?.find(t => t.lessons?.some(l => l.id === lessonId));
-    
     if (topic) {
       topic.lessons = topic.lessons.filter(l => l.id !== lessonId);
       updateProgram(programId, updatedProgram);
@@ -150,19 +171,69 @@ const ReviewDashboard = () => {
     }
   };
 
+  // New handlers for additional context modals
+  const handleOpenTopicContextModal = (topic) => {
+    setSelectedTopicForContext(topic);
+    setTopicContextInput(topic.additionalContext || '');
+    setShowTopicContextModal(true);
+  };
+
+  const handleOpenLessonContextModal = (lesson) => {
+    setSelectedLessonForContext(lesson);
+    setLessonContextInput(lesson.additionalContext || '');
+    setShowLessonContextModal(true);
+  };
+
+  const handleSaveTopicContext = () => {
+    if (!selectedTopicForContext) return;
+
+    const updatedProgram = { ...currentProgram };
+    const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
+    const topic = course?.topics?.find(t => t.id === selectedTopicForContext.id);
+    if (topic) {
+      topic.additionalContext = topicContextInput;
+      updateProgram(programId, updatedProgram);
+      toast.success('Topic additional context saved!');
+    }
+
+    setShowTopicContextModal(false);
+    setSelectedTopicForContext(null);
+    setTopicContextInput('');
+  };
+
+  const handleSaveLessonContext = () => {
+    if (!selectedLessonForContext) return;
+
+    const updatedProgram = { ...currentProgram };
+    const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
+    const topic = course?.topics?.find(t => t.lessons?.some(l => l.id === selectedLessonForContext.id));
+    const lesson = topic?.lessons?.find(l => l.id === selectedLessonForContext.id);
+    if (lesson) {
+      lesson.additionalContext = lessonContextInput;
+      updateProgram(programId, updatedProgram);
+      toast.success('Lesson additional context saved!');
+    }
+
+    setShowLessonContextModal(false);
+    setSelectedLessonForContext(null);
+    setLessonContextInput('');
+  };
+
   const handleRegenerateCourse = async () => {
     if (!selectedCourse) return;
-    
+
     const activeKeys = getActiveOpenAIKeys();
     if (activeKeys.length === 0) {
       toast.error('Please add at least one OpenAI API key in settings.');
       return;
     }
-    
+
     setRegeneratingCourse(true);
+    startGeneration(selectedCourse.courseTitle, 0, 0, 'Initiating course regeneration...');
     toast.loading('Regenerating course topics and lessons...', { id: 'regenerating' });
-    
+
     try {
+      updateProgress(20, 'Analyzing course context and requirements...', 'analysis');
       const result = await generateCourseTopicsAndLessons(
         selectedCourse,
         currentProgram.programContext,
@@ -171,26 +242,29 @@ const ReviewDashboard = () => {
         currentProgram.designConsiderations,
         activeKeys[0].key
       );
-      
+
+      updateProgress(60, 'Generating new topics and lessons...', 'generation');
       if (result.topics && result.topics.length > 0) {
         const updatedProgram = { ...currentProgram };
         const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
-        
         if (course) {
           course.topics = result.topics;
           updateProgram(programId, updatedProgram);
-          
-          // Expand the first topic
           if (result.topics.length > 0) {
             setExpandedTopics(new Set([result.topics[0].id]));
           }
-          
+
+          updateProgress(90, 'Finalizing course structure...', 'finalizing');
+          setTimeout(() => {
+            completeGeneration('Course regenerated successfully!');
+          }, 1000);
           toast.success('Course regenerated successfully!', { id: 'regenerating' });
         }
       }
     } catch (error) {
       console.error('Error regenerating course:', error);
       toast.error('Failed to regenerate course. Please try again.', { id: 'regenerating' });
+      failGeneration('Failed to regenerate course. Please check your API keys and try again.');
     } finally {
       setRegeneratingCourse(false);
     }
@@ -211,37 +285,55 @@ const ReviewDashboard = () => {
       toast.error('Please select a course first.');
       return;
     }
-    
+
     const activeKeys = getActiveOpenAIKeys();
     const lmsCredentials = getDecryptedLMSCredentials();
-    
+
     if (activeKeys.length === 0) {
       toast.error('Please add at least one OpenAI API key in settings.');
       navigate('/settings');
       return;
     }
-    
+
     if (!lmsCredentials.username || !lmsCredentials.password) {
       toast.error('Please configure your LMS credentials in settings.');
       navigate('/settings');
       return;
     }
-    
+
     setGenerating(true);
-    toast.loading('Generating full course content...', { id: 'generating-content' });
     
+    // Calculate totals
+    const totalTopics = selectedCourse.topics?.length || 0;
+    const totalLessons = selectedCourse.topics?.reduce((total, topic) => total + (topic.lessons?.length || 0), 0) || 0;
+    
+    startGeneration(selectedCourse.courseTitle, totalTopics, totalLessons, 'Starting full course content generation...');
+    toast.loading('Generating full course content...', { id: 'generating-content' });
+
     try {
-      await generateCourseContent(selectedCourse, lmsCredentials, activeKeys[0].key);
-      
+      await generateCourseContent(selectedCourse, lmsCredentials, activeKeys[0].key, {
+        onProgress: updateProgress,
+        onTaskUpdate: updateTaskProgress,
+        checkPauseStatus,
+        getAbortSignal
+      });
+
       updateProgram(programId, {
         status: 'in-progress',
         lastGenerated: new Date().toISOString()
       });
-      
-      toast.success('Content generation started! Check your LMS for progress.', { id: 'generating-content' });
+
+      completeGeneration('Content generation completed! Check your LMS for the uploaded materials.');
+      toast.success('Content generation completed! Check your LMS for the uploaded materials.', { id: 'generating-content' });
     } catch (error) {
       console.error('Error generating content:', error);
-      toast.error('Failed to generate content. Please try again.', { id: 'generating-content' });
+      
+      if (error.message === 'Request aborted by user') {
+        toast.error('Content generation was aborted.', { id: 'generating-content' });
+      } else {
+        toast.error('Failed to generate content. Please try again.', { id: 'generating-content' });
+        failGeneration('Content generation failed. Please check your API keys and LMS credentials.');
+      }
     } finally {
       setGenerating(false);
     }
@@ -249,14 +341,14 @@ const ReviewDashboard = () => {
 
   // Info Modal Component
   const InfoModal = () => (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
       onClick={() => setShowInfoModal(false)}
     >
-      <motion.div 
+      <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.9, opacity: 0 }}
@@ -266,30 +358,131 @@ const ReviewDashboard = () => {
         <h3 className="text-xl font-bold mb-4">Content Generation Process</h3>
         <div className="space-y-4">
           <p>Here's how the content generation process works:</p>
-          
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
             <p>The system first conducts comprehensive research using AI o3-mini to analyze your niche and create detailed program context.</p>
           </div>
-          
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
             <p>Based on the research, GPT-4.1 generates the program structure with detailed courses, topics, and lessons.</p>
           </div>
-          
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
             <p>You can edit, add, or remove topics and lessons before generating the full content.</p>
           </div>
-          
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">4</div>
             <p>Final content generation creates comprehensive lessons with case studies, FAQs, slides, and voice-over scripts.</p>
           </div>
         </div>
-        
         <div className="mt-6 flex justify-end">
           <Button onClick={() => setShowInfoModal(false)}>Got it</Button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+
+  // Topic Additional Context Modal
+  const TopicContextModal = () => (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={() => setShowTopicContextModal(false)}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <SafeIcon icon={FiDatabase} className="text-2xl text-primary-600" />
+            <h3 className="text-xl font-bold">Additional Context for Topic</h3>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setShowTopicContextModal(false)}>
+            <SafeIcon icon={FiX} />
+          </Button>
+        </div>
+        <div className="mb-4">
+          <h4 className="font-medium text-gray-900 mb-2">
+            {selectedTopicForContext?.topicTitle}
+          </h4>
+          <p className="text-sm text-gray-600">
+            Add additional research, statistics, quotes, or latest findings that will enhance all lessons in this topic.
+          </p>
+        </div>
+        <Textarea
+          label="Additional Context (Optional)"
+          placeholder="Add research findings, statistics, industry quotes, latest trends, or any additional context that should be included in all lessons for this topic..."
+          rows={8}
+          value={topicContextInput}
+          onChange={(e) => setTopicContextInput(e.target.value)}
+          className="mb-6"
+        />
+        <div className="flex justify-end space-x-3">
+          <Button variant="secondary" onClick={() => setShowTopicContextModal(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSaveTopicContext}>
+            Save Context
+          </Button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+
+  // Lesson Additional Context Modal
+  const LessonContextModal = () => (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={() => setShowLessonContextModal(false)}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <SafeIcon icon={FiFileText} className="text-2xl text-primary-600" />
+            <h3 className="text-xl font-bold">Additional Context for Lesson</h3>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setShowLessonContextModal(false)}>
+            <SafeIcon icon={FiX} />
+          </Button>
+        </div>
+        <div className="mb-4">
+          <h4 className="font-medium text-gray-900 mb-2">
+            {selectedLessonForContext?.lessonTitle}
+          </h4>
+          <p className="text-sm text-gray-600">
+            Add specific context, examples, or additional information for this particular lesson.
+          </p>
+        </div>
+        <Textarea
+          label="Lesson-Specific Additional Context (Optional)"
+          placeholder="Add specific examples, case studies, technical details, or any additional context that should be included specifically in this lesson..."
+          rows={8}
+          value={lessonContextInput}
+          onChange={(e) => setLessonContextInput(e.target.value)}
+          className="mb-6"
+        />
+        <div className="flex justify-end space-x-3">
+          <Button variant="secondary" onClick={() => setShowLessonContextModal(false)}>
+            Cancel
+          </Button>
+          <Button onClick={handleSaveLessonContext}>
+            Save Context
+          </Button>
         </div>
       </motion.div>
     </motion.div>
@@ -307,10 +500,34 @@ const ReviewDashboard = () => {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <EnhancedStatusBar
+        visible={generationStatus.visible}
+        type={generationStatus.type}
+        message={generationStatus.message}
+        progress={generationStatus.progress}
+        isMinimized={generationStatus.isMinimized}
+        isPaused={generationStatus.isPaused}
+        canPause={generationStatus.canPause}
+        canAbort={generationStatus.canAbort}
+        currentTask={generationStatus.currentTask}
+        totalTasks={generationStatus.totalTasks}
+        completedTasks={generationStatus.completedTasks}
+        estimatedTimeRemaining={generationStatus.estimatedTimeRemaining}
+        details={generationStatus.details}
+        onClose={hideStatus}
+        onMinimize={minimizeStatus}
+        onMaximize={maximizeStatus}
+        onPause={pauseGeneration}
+        onResume={resumeGeneration}
+        onAbort={abortGeneration}
+      />
+
       <AnimatePresence>
         {showInfoModal && <InfoModal />}
+        {showTopicContextModal && <TopicContextModal />}
+        {showLessonContextModal && <LessonContextModal />}
       </AnimatePresence>
-      
+
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -325,8 +542,8 @@ const ReviewDashboard = () => {
               Review the generated program structure, make edits, and generate content for specific courses.
             </p>
           </div>
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             className="flex items-center space-x-2"
             onClick={() => setShowInfoModal(true)}
           >
@@ -362,7 +579,6 @@ const ReviewDashboard = () => {
         <div className="lg:col-span-1">
           <Card className="p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Course</h2>
-            
             {currentProgram.courses && currentProgram.courses.length > 0 ? (
               <Select
                 value={selectedCourseId}
@@ -384,7 +600,6 @@ const ReviewDashboard = () => {
                     After reviewing and editing, click "Generate Content" to create the full course in your LMS
                   </p>
                 </div>
-                
                 <Button
                   onClick={handleGenerateContent}
                   loading={generating}
@@ -393,7 +608,6 @@ const ReviewDashboard = () => {
                   <SafeIcon icon={FiPlay} />
                   <span>Generate Content</span>
                 </Button>
-                
                 <Button
                   onClick={handleRegenerateCourse}
                   loading={regeneratingCourse}
@@ -403,20 +617,16 @@ const ReviewDashboard = () => {
                   <SafeIcon icon={FiRefreshCw} />
                   <span>Regenerate Course</span>
                 </Button>
-                
                 <div className="text-sm text-gray-600">
                   <p><strong>Topics:</strong> {selectedCourse.topics?.length || 0}</p>
-                  <p><strong>Total Lessons:</strong> {
-                    selectedCourse.topics?.reduce(
-                      (total, topic) => total + (topic.lessons?.length || 0),
-                      0
-                    ) || 0
-                  }</p>
+                  <p><strong>Total Lessons:</strong> {selectedCourse.topics?.reduce(
+                    (total, topic) => total + (topic.lessons?.length || 0), 0
+                  ) || 0}</p>
                 </div>
               </div>
             )}
           </Card>
-          
+
           {/* Info Card */}
           <Card className="p-6 mt-6 bg-gradient-to-r from-primary-50 to-primary-100 border-primary-200">
             <h3 className="font-medium text-primary-800 mb-2">Content Generation Details</h3>
@@ -541,9 +751,7 @@ const ReviewDashboard = () => {
                           onClick={() => toggleTopic(topic.id)}
                           className="text-gray-400 hover:text-gray-600"
                         >
-                          <SafeIcon
-                            icon={expandedTopics.has(topic.id) ? FiChevronDown : FiChevronRight}
-                          />
+                          <SafeIcon icon={expandedTopics.has(topic.id) ? FiChevronDown : FiChevronRight} />
                         </button>
                         <SafeIcon icon={FiTarget} className="text-lg text-green-600" />
                         <div className="flex-1">
@@ -573,6 +781,16 @@ const ReviewDashboard = () => {
                             </div>
                           )}
                         </div>
+                        {/* Topic Additional Context Button */}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenTopicContextModal(topic)}
+                          className={`${topic.additionalContext ? 'text-primary-600 bg-primary-50' : 'text-gray-600'}`}
+                          title="Add additional context for this topic"
+                        >
+                          <SafeIcon icon={FiDatabase} />
+                        </Button>
                         <Button
                           variant="ghost"
                           size="sm"
@@ -606,6 +824,16 @@ const ReviewDashboard = () => {
                           >
                             <SafeIcon icon={FiEdit3} />
                           </Button>
+                        </div>
+                      )}
+
+                      {/* Show additional context indicator */}
+                      {topic.additionalContext && (
+                        <div className="mt-2 ml-6">
+                          <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-primary-100 text-primary-700">
+                            <SafeIcon icon={FiDatabase} className="mr-1" />
+                            Additional context added
+                          </div>
                         </div>
                       )}
                     </div>
@@ -689,7 +917,27 @@ const ReviewDashboard = () => {
                                       </Button>
                                     </div>
                                   )}
+
+                                  {/* Show lesson additional context indicator */}
+                                  {lesson.additionalContext && (
+                                    <div className="mt-2">
+                                      <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
+                                        <SafeIcon icon={FiFileText} className="mr-1" />
+                                        Lesson context added
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
+                                {/* Lesson Additional Context Button */}
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleOpenLessonContextModal(lesson)}
+                                  className={`${lesson.additionalContext ? 'text-blue-600 bg-blue-50' : 'text-gray-600'}`}
+                                  title="Add additional context for this lesson"
+                                >
+                                  <SafeIcon icon={FiFileText} />
+                                </Button>
                                 <Button
                                   variant="ghost"
                                   size="sm"

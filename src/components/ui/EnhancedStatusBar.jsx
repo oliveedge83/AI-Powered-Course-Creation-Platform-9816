@@ -3,29 +3,31 @@ import { motion, AnimatePresence } from 'framer-motion';
 import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../../common/SafeIcon';
 
-const { 
-  FiAlertCircle, 
-  FiCheckCircle, 
-  FiLoader, 
-  FiX, 
-  FiMinus, 
-  FiMaximize2, 
-  FiPause, 
-  FiPlay, 
+const {
+  FiAlertCircle,
+  FiCheckCircle,
+  FiLoader,
+  FiX,
+  FiMinus,
+  FiMaximize2,
+  FiPause,
+  FiPlay,
   FiStop,
   FiClock,
   FiBook,
   FiList,
   FiTarget,
   FiChevronDown,
-  FiChevronUp
+  FiChevronUp,
+  FiInfo,
+  FiRefreshCw
 } = FiIcons;
 
-const EnhancedStatusBar = ({ 
-  visible, 
-  type = 'info', 
-  message, 
-  progress = 0, 
+const EnhancedStatusBar = ({
+  visible,
+  type = 'info',
+  message,
+  progress = 0,
   isMinimized = false,
   isPaused = false,
   canPause = false,
@@ -46,34 +48,34 @@ const EnhancedStatusBar = ({
 
   if (!visible) return null;
 
+  // Fix NaN% progress issue by ensuring we have valid numbers
+  const normalizedProgress = Number.isFinite(progress) ? Math.min(100, Math.max(0, progress)) : 0;
+  const normalizedCompletedTasks = Number.isFinite(completedTasks) ? completedTasks : 0;
+  const normalizedTotalTasks = Number.isFinite(totalTasks) && totalTasks > 0 ? totalTasks : 1;
+  const progressPercentage = Math.round(normalizedProgress);
+  const tasksRatio = `${normalizedCompletedTasks}/${normalizedTotalTasks}`;
+
   const getIcon = () => {
     switch (type) {
-      case 'success':
-        return FiCheckCircle;
-      case 'error':
-        return FiAlertCircle;
-      case 'loading':
-        return isPaused ? FiPause : FiLoader;
-      default:
-        return FiLoader;
+      case 'success': return FiCheckCircle;
+      case 'error': return FiAlertCircle;
+      case 'loading': return isPaused ? FiPause : FiLoader;
+      default: return FiLoader;
     }
   };
 
   const getColor = () => {
     switch (type) {
-      case 'success':
-        return 'bg-green-500';
-      case 'error':
-        return 'bg-red-500';
-      case 'loading':
-        return isPaused ? 'bg-yellow-500' : 'bg-blue-500';
-      default:
-        return 'bg-blue-500';
+      case 'success': return 'bg-green-500';
+      case 'error': return 'bg-red-500';
+      case 'loading': return isPaused ? 'bg-yellow-500' : 'bg-blue-500';
+      default: return 'bg-blue-500';
     }
   };
 
   const formatTime = (milliseconds) => {
     if (!milliseconds) return 'Calculating...';
+    
     const seconds = Math.floor(milliseconds / 1000);
     const minutes = Math.floor(seconds / 60);
     const hours = Math.floor(minutes / 60);
@@ -103,14 +105,14 @@ const EnhancedStatusBar = ({
           />
         </div>
         <div className="text-sm">
-          <div className="font-medium">{Math.round(progress)}%</div>
-          <div className="text-xs text-gray-500">{completedTasks}/{totalTasks}</div>
+          <div className="font-medium">{progressPercentage}%</div>
+          <div className="text-xs text-gray-500">{tasksRatio}</div>
         </div>
         <div className="w-8 h-2 bg-gray-200 rounded-full overflow-hidden">
-          <motion.div
+          <motion.div 
             className={`h-full ${getColor()}`}
             initial={{ width: '0%' }}
-            animate={{ width: `${progress}%` }}
+            animate={{ width: `${normalizedProgress}%` }}
             transition={{ duration: 0.3 }}
           />
         </div>
@@ -144,7 +146,7 @@ const EnhancedStatusBar = ({
           </div>
           <div className="flex items-center space-x-1">
             {canPause && (
-              <button
+              <button 
                 onClick={isPaused ? onResume : onPause}
                 className={`p-1 hover:bg-gray-100 rounded-full ${isPaused ? 'text-green-600' : 'text-yellow-600'}`}
                 title={isPaused ? 'Resume' : 'Pause'}
@@ -153,7 +155,7 @@ const EnhancedStatusBar = ({
               </button>
             )}
             {canAbort && (
-              <button
+              <button 
                 onClick={onAbort}
                 className="p-1 hover:bg-gray-100 rounded-full text-red-600"
                 title="Abort"
@@ -161,7 +163,7 @@ const EnhancedStatusBar = ({
                 <SafeIcon icon={FiStop} />
               </button>
             )}
-            <button
+            <button 
               onClick={onMinimize}
               className="p-1 hover:bg-gray-100 rounded-full"
               title="Minimize"
@@ -169,7 +171,7 @@ const EnhancedStatusBar = ({
               <SafeIcon icon={FiMinus} />
             </button>
             {onClose && (
-              <button
+              <button 
                 onClick={onClose}
                 className="p-1 hover:bg-gray-100 rounded-full"
                 title="Close"
@@ -183,14 +185,14 @@ const EnhancedStatusBar = ({
         {/* Progress Bar */}
         <div className="mb-2">
           <div className="flex justify-between text-sm text-gray-600 mb-1">
-            <span>{Math.round(progress)}% Complete</span>
-            <span>{completedTasks}/{totalTasks} tasks</span>
+            <span>{progressPercentage}% Complete</span>
+            <span>{tasksRatio} tasks</span>
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2.5">
-            <motion.div
+            <motion.div 
               className={`h-2.5 rounded-full ${getColor()}`}
               initial={{ width: '0%' }}
-              animate={{ width: `${progress}%` }}
+              animate={{ width: `${normalizedProgress}%` }}
               transition={{ duration: 0.3 }}
             />
           </div>
@@ -210,14 +212,14 @@ const EnhancedStatusBar = ({
 
       {/* Details Section */}
       <div className="p-4">
-        <button
+        <button 
           onClick={() => setShowDetails(!showDetails)}
           className="flex items-center justify-between w-full text-sm font-medium text-gray-700 hover:text-gray-900"
         >
           <span>Progress Details</span>
           <SafeIcon icon={showDetails ? FiChevronUp : FiChevronDown} />
         </button>
-        
+
         <AnimatePresence>
           {showDetails && (
             <motion.div
@@ -232,14 +234,12 @@ const EnhancedStatusBar = ({
                   <span>Topic: {details.currentTopic}</span>
                 </div>
               )}
-              
               {details.currentLesson && (
                 <div className="flex items-center space-x-2">
                   <SafeIcon icon={FiList} className="text-blue-600" />
                   <span>Lesson: {details.currentLesson}</span>
                 </div>
               )}
-              
               <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
                 <div>
                   <span className="font-medium">Topics:</span> {details.topicsCompleted}/{details.totalTopics}
@@ -248,6 +248,25 @@ const EnhancedStatusBar = ({
                   <span className="font-medium">Lessons:</span> {details.lessonsCompleted}/{details.totalLessons}
                 </div>
               </div>
+
+              {/* Status Messages */}
+              {isPaused && (
+                <div className="bg-yellow-50 p-2 rounded-md flex items-start space-x-2 mt-2">
+                  <SafeIcon icon={FiPause} className="text-yellow-600 mt-0.5" />
+                  <p className="text-yellow-700 text-xs">
+                    Generation is paused. Click resume to continue.
+                  </p>
+                </div>
+              )}
+              
+              {type === 'error' && (
+                <div className="bg-red-50 p-2 rounded-md flex items-start space-x-2 mt-2">
+                  <SafeIcon icon={FiAlertCircle} className="text-red-600 mt-0.5" />
+                  <p className="text-red-700 text-xs">
+                    An error occurred. The system will attempt to resume from the last successful point.
+                  </p>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

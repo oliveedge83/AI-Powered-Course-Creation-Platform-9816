@@ -1,31 +1,31 @@
-import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import {create} from 'zustand';
+import {persist} from 'zustand/middleware';
 
 export const useAuthStore = create(
   persist(
     (set, get) => ({
       user: null,
       loading: false,
-      
       login: (userData) => {
-        set({ user: userData });
+        set({user: userData});
       },
-      
       logout: () => {
-        set({ user: null });
+        set({user: null});
       },
-      
       updateUser: (userData) => {
-        set({ user: { ...get().user, ...userData } });
+        set({user: {...get().user, ...userData}});
       },
-      
       setLoading: (loading) => {
-        set({ loading });
+        set({loading});
+      },
+      isSuperAdmin: () => {
+        const user = get().user;
+        return user && user.role === 'superadmin';
       },
     }),
     {
       name: 'auth-storage',
-      partialize: (state) => ({ user: state.user }),
+      partialize: (state) => ({user: state.user}),
     }
   )
 );

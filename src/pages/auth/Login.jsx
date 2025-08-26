@@ -1,51 +1,52 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { useForm } from 'react-hook-form';
+import React, {useState} from 'react';
+import {Link, useNavigate} from 'react-router-dom';
+import {motion} from 'framer-motion';
+import {useForm} from 'react-hook-form';
 import toast from 'react-hot-toast';
 import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../../common/SafeIcon';
-import { useAuthStore } from '../../stores/authStore';
+import {useAuthStore} from '../../stores/authStore';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
+import { signIn } from '../../services/supabaseService';
 
-const { FiMail, FiLock, FiEye, FiEyeOff } = FiIcons;
+const {FiMail, FiLock, FiEye, FiEyeOff} = FiIcons;
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login } = useAuthStore();
+  const {login} = useAuthStore();
   const navigate = useNavigate();
 
-  const { register, handleSubmit, formState: { errors } } = useForm({
+  const {
+    register,
+    handleSubmit,
+    formState: {errors}
+  } = useForm({
     mode: 'onBlur', // Validate on blur
-    defaultValues: {
-      email: '',
-      password: ''
-    }
+    defaultValues: {email: '', password: ''}
   });
 
   const onSubmit = async (data) => {
     setLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const result = await signIn(data.email, data.password);
       
-      // Mock user data
-      const userData = {
-        id: '1',
-        email: data.email,
-        name: data.email.split('@')[0],
-        createdAt: new Date().toISOString()
-      };
-      
-      login(userData);
-      toast.success('Welcome back!');
-      navigate('/');
+      if (result.user) {
+        login(result.user);
+        toast.success('Welcome back!');
+        
+        // Navigate to admin dashboard if superadmin
+        if (result.user.role === 'superadmin') {
+          navigate('/admin');
+        } else {
+          navigate('/');
+        }
+      }
     } catch (error) {
       console.error('Login error:', error);
-      toast.error('Login failed. Please try again.');
+      toast.error('Login failed. Please check your credentials and try again.');
     } finally {
       setLoading(false);
     }
@@ -54,15 +55,15 @@ const Login = () => {
   return (
     <div className="min-h-screen flex items-center justify-center px-4">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{opacity: 0, y: 20}}
+        animate={{opacity: 1, y: 0}}
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
           <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2 }}
+            initial={{scale: 0}}
+            animate={{scale: 1}}
+            transition={{delay: 0.2}}
             className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4"
           >
             <SafeIcon icon={FiMail} className="text-white text-2xl" />
@@ -110,12 +111,7 @@ const Login = () => {
               </button>
             </div>
 
-            <Button
-              type="submit"
-              loading={loading}
-              className="w-full"
-              size="lg"
-            >
+            <Button type="submit" loading={loading} className="w-full" size="lg">
               Sign In
             </Button>
           </form>
@@ -123,10 +119,7 @@ const Login = () => {
           <div className="mt-6 text-center">
             <p className="text-gray-600">
               Don't have an account?{' '}
-              <Link
-                to="/register"
-                className="text-primary-600 hover:text-primary-700 font-medium"
-              >
+              <Link to="/register" className="text-primary-600 hover:text-primary-700 font-medium">
                 Sign up
               </Link>
             </p>

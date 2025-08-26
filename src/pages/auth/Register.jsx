@@ -1,53 +1,50 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { useForm } from 'react-hook-form';
+import React, {useState} from 'react';
+import {Link, useNavigate} from 'react-router-dom';
+import {motion} from 'framer-motion';
+import {useForm} from 'react-hook-form';
 import toast from 'react-hot-toast';
 import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../../common/SafeIcon';
-import { useAuthStore } from '../../stores/authStore';
+import {useAuthStore} from '../../stores/authStore';
 import Input from '../../components/ui/Input';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
+import { signUp } from '../../services/supabaseService';
 
-const { FiUserPlus, FiMail, FiLock, FiUser, FiEye, FiEyeOff } = FiIcons;
+const {FiUserPlus, FiMail, FiLock, FiUser, FiEye, FiEyeOff} = FiIcons;
 
 const Register = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login } = useAuthStore();
+  const {login} = useAuthStore();
   const navigate = useNavigate();
 
-  const { register, handleSubmit, watch, formState: { errors } } = useForm({
+  const {
+    register,
+    handleSubmit,
+    watch,
+    formState: {errors}
+  } = useForm({
     mode: 'onBlur', // Validate on blur
-    defaultValues: {
-      name: '',
-      email: '',
-      password: '',
-      confirmPassword: ''
-    }
+    defaultValues: {name: '', email: '', password: '', confirmPassword: ''}
   });
-  
+
   const password = watch('password');
 
   const onSubmit = async (data) => {
     setLoading(true);
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      // Mock user data
-      const userData = {
-        id: Date.now().toString(),
-        email: data.email,
+      // Sign up with Supabase
+      const result = await signUp(data.email, data.password, {
         name: data.name,
-        createdAt: new Date().toISOString()
-      };
+      });
       
-      login(userData);
-      toast.success('Account created successfully!');
-      navigate('/');
+      if (result.user) {
+        login(result.user);
+        toast.success('Account created successfully!');
+        navigate('/');
+      }
     } catch (error) {
       console.error('Registration error:', error);
       toast.error('Registration failed. Please try again.');
@@ -59,15 +56,15 @@ const Register = () => {
   return (
     <div className="min-h-screen flex items-center justify-center px-4 py-8">
       <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{opacity: 0, y: 20}}
+        animate={{opacity: 1, y: 0}}
         className="w-full max-w-md"
       >
         <div className="text-center mb-8">
           <motion.div
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            transition={{ delay: 0.2 }}
+            initial={{scale: 0}}
+            animate={{scale: 1}}
+            transition={{delay: 0.2}}
             className="w-16 h-16 bg-gradient-to-br from-primary-500 to-primary-700 rounded-2xl flex items-center justify-center mx-auto mb-4"
           >
             <SafeIcon icon={FiUserPlus} className="text-white text-2xl" />
@@ -149,12 +146,7 @@ const Register = () => {
               </button>
             </div>
 
-            <Button
-              type="submit"
-              loading={loading}
-              className="w-full"
-              size="lg"
-            >
+            <Button type="submit" loading={loading} className="w-full" size="lg">
               Create Account
             </Button>
           </form>
@@ -162,10 +154,7 @@ const Register = () => {
           <div className="mt-6 text-center">
             <p className="text-gray-600">
               Already have an account?{' '}
-              <Link
-                to="/login"
-                className="text-primary-600 hover:text-primary-700 font-medium"
-              >
+              <Link to="/login" className="text-primary-600 hover:text-primary-700 font-medium">
                 Sign in
               </Link>
             </p>

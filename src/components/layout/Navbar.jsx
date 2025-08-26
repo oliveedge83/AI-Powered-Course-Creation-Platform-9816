@@ -1,27 +1,37 @@
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import {Link, useLocation, useNavigate} from 'react-router-dom';
+import {motion} from 'framer-motion';
 import * as FiIcons from 'react-icons/fi';
 import SafeIcon from '../../common/SafeIcon';
-import { useAuthStore } from '../../stores/authStore';
+import {useAuthStore} from '../../stores/authStore';
 
-const { FiHome, FiPlus, FiSettings, FiLogOut, FiUser } = FiIcons;
+const {FiHome, FiPlus, FiSettings, FiLogOut, FiUser, FiShield, FiUsers, FiBarChart2} = FiIcons;
 
 const Navbar = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
-
+  const {user, logout, isSuperAdmin} = useAuthStore();
+  
   const handleLogout = () => {
     logout();
     navigate('/login');
   };
-
+  
+  // Basic nav items for all users
   const navItems = [
-    { path: '/', icon: FiHome, label: 'Dashboard' },
-    { path: '/create', icon: FiPlus, label: 'Create Program' },
-    { path: '/settings', icon: FiSettings, label: 'Settings' },
+    {path: '/', icon: FiHome, label: 'Dashboard'},
+    {path: '/create', icon: FiPlus, label: 'Create Program'},
+    {path: '/settings', icon: FiSettings, label: 'Settings'},
   ];
+  
+  // Add admin nav items if user is superadmin
+  if (isSuperAdmin()) {
+    navItems.push(
+      {path: '/admin', icon: FiShield, label: 'Admin'},
+      {path: '/admin/users', icon: FiUsers, label: 'Users'},
+      {path: '/admin/stats', icon: FiBarChart2, label: 'Stats'}
+    );
+  }
 
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200">
@@ -29,8 +39,8 @@ const Navbar = () => {
         <div className="flex justify-between items-center h-16">
           <Link to="/" className="flex items-center space-x-3">
             <motion.div
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{scale: 1.05}}
+              whileTap={{scale: 0.95}}
               className="w-8 h-8 bg-gradient-to-br from-primary-500 to-primary-700 rounded-lg flex items-center justify-center"
             >
               <SafeIcon icon={FiPlus} className="text-white text-lg" />
@@ -38,18 +48,19 @@ const Navbar = () => {
             <span className="text-xl font-bold bg-gradient-to-r from-primary-600 to-primary-800 bg-clip-text text-transparent">
               EduGen AI
             </span>
+            {isSuperAdmin() && (
+              <span className="text-xs px-2 py-1 bg-red-100 text-red-800 font-medium rounded-full">
+                Admin
+              </span>
+            )}
           </Link>
 
           <div className="flex items-center space-x-1">
             {navItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                className="relative"
-              >
+              <Link key={item.path} to={item.path} className="relative">
                 <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
+                  whileHover={{scale: 1.05}}
+                  whileTap={{scale: 0.95}}
                   className={`px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors ${
                     location.pathname === item.path
                       ? 'bg-primary-100 text-primary-700'
@@ -75,8 +86,8 @@ const Navbar = () => {
               <span>{user?.email}</span>
             </div>
             <motion.button
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
+              whileHover={{scale: 1.05}}
+              whileTap={{scale: 0.95}}
               onClick={handleLogout}
               className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
             >

@@ -1,8 +1,8 @@
 import { createClient } from '@supabase/supabase-js'
 
 // Updated Supabase credentials for self-hosted instance
-const SUPABASE_URL = 'https://supabase-ps4go-u52959.vm.elestio.app'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzU0MDM1MzAwLCJleHAiOjIwNjkzOTUzMDB9.d4XNaC6kGDXC59LySD4V2XYXs3SB0hzoTEgyrQrqO40'
+const SUPABASE_URL = 'https://hsemulflbotzniswhgiy.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhzZW11bGZsYm90em5pc3doZ2l5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTUzODI1MTQsImV4cCI6MjA3MDk1ODUxNH0.FZKxxdSTj5gHEIktBGvYTsZ7Ao1ZHHW7De6vY22swEA'
 
 if(SUPABASE_URL === 'https://<PROJECT-ID>.supabase.co' || SUPABASE_ANON_KEY === '<ANON_KEY>'){
   throw new Error('Missing Supabase variables');

@@ -14,7 +14,6 @@ export const listVectorStores = async (apiKey) => {
         'OpenAI-Beta': 'assistants=v2'
       }
     });
-    
     return response.data.data || [];
   } catch (error) {
     console.error('Error listing vector stores:', error);
@@ -33,17 +32,14 @@ export const uploadFile = async (apiKey, file) => {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('purpose', 'assistants');
-    
-    const response = await axios.post('https://api.openai.com/v1/files', 
-      formData, 
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'multipart/form-data'
-        }
+
+    const response = await axios.post('https://api.openai.com/v1/files', formData, {
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'multipart/form-data'
       }
-    );
-    
+    });
+
     return response.data;
   } catch (error) {
     console.error('Error uploading file:', error);
@@ -69,7 +65,7 @@ export const createVectorStore = async (apiKey, name, fileIds, options = {}) => 
         chunk_overlap_tokens: 250
       }
     };
-    
+
     const response = await axios.post(
       'https://api.openai.com/v1/vector_stores',
       {
@@ -85,7 +81,7 @@ export const createVectorStore = async (apiKey, name, fileIds, options = {}) => 
         }
       }
     );
-    
+
     return response.data;
   } catch (error) {
     console.error('Error creating vector store:', error);
@@ -111,7 +107,7 @@ export const getVectorStore = async (apiKey, vectorStoreId) => {
         }
       }
     );
-    
+
     return response.data;
   } catch (error) {
     console.error('Error getting vector store:', error);
@@ -139,7 +135,7 @@ export const addFilesToVectorStore = async (apiKey, vectorStoreId, fileIds) => {
         }
       }
     );
-    
+
     return response.data;
   } catch (error) {
     console.error('Error adding files to vector store:', error);
@@ -148,72 +144,134 @@ export const addFilesToVectorStore = async (apiKey, vectorStoreId, fileIds) => {
 };
 
 /**
- * Generates content using RAG with a vector store
- * @param {string} apiKey - OpenAI API key
- * @param {string} vectorStoreId - ID of the vector store to use
- * @param {Object} lessonData - Lesson data including title and description
- * @param {string} courseContext - Course context
- * @param {string} topicContext - Topic context
- * @returns {Promise<Object>} - Generated content
+ * ✅ FIXED: Generate content using RAG with vector store
+ * Uses the correct /v1/chat/completions endpoint with file_search tools
  */
-export const generateContentWithRAG = async (apiKey, vectorStoreId, lessonData, courseContext, topicContext) => {
+export const generateContentWithRAG = async (
+  apiKey, 
+  vectorStoreId, 
+  lessonData, 
+  courseContext, 
+  topicContext,
+  webSearchContext = ''
+) => {
   try {
-    const systemPrompt = `Focus on actionable strategies that readers can implement immediately. 
-    Address emotional triggers. Emphasize benefits. Include common mistakes and how to avoid them. 
-    Use case studies or examples from real businesses to make content relatable. 
-    Provide templates and actionable checklists if applicable. Keep the text as action focused as possible. 
-    Quote recent research on this topic if any. Keep the tone motivating and supportive. 
-    Sound like Malcolm Gladwell or Daniel Pink for this content.
+    console.log(`🔍 Starting RAG generation for lesson: ${lessonData.lessonTitle}`);
+    console.log(`📚 Using vector store: ${vectorStoreId}`);
+    console.log(`🌐 Web search context available: ${webSearchContext ? 'Yes' : 'No'}`);
 
-    The full content for this section will include the below:
-    readingContent: The main text content (~1500-2000 words) in HTML format.
+    const systemPrompt = `
+      Act as a senior instructor designer. For generating the lesson content use the following context:
+      
+      RESEARCH: ${courseContext}
+      
+      Must have topics: ${topicContext}
+      
+      Design considerations: Course structure content with topic, course
+      
+      ${webSearchContext ? `Recent relevant Websearch context: ${webSearchContext}` : ''}
+      
+      Use websearch context as high priority to generate the text.
+      
+      Focus on actionable strategies that readers can implement immediately. Address emotional triggers. Emphasize benefits. Include common mistakes and how to avoid them. Use case studies or examples from real businesses to make content relatable. Provide templates and actionable checklists if applicable. Keep the text as action focused as possible. Quote recent research on this topic if any. Keep the tone motivating and supportive. Sound like Malcolm Gladwell or Daniel Pink for this content.
+      
+      CRITICAL: Generate all content in well-structured HTML format suitable for professional LMS display. Use proper HTML tags, semantic structure, and CSS classes for styling.
+      
+      Use the attached files from the vector store library as authoritative reference material.
+    `;
 
-    Generate the content for the section using the context below in HTML formatting.
+    const userPrompt = `
+      Generate the <b>readingContent</b> (1600-1800 words in HTML) for the lesson "${lessonData.lessonTitle}" 
+      focusing on: ${lessonData.lessonDescription}
+      
+      Audience: Marketing professionals and business practitioners
+      
+      Objectives: Create comprehensive, practical lesson content that combines:
+      1. Current industry trends and examples (from web search context)
+      2. Authoritative knowledge (from attached library files)  
+      3. Actionable strategies and implementation guidance
+      
+      Requirements:
+      - Generate 1600-1800 words in clean HTML format
+      - Use semantic HTML structure with proper headings, paragraphs, lists
+      - Include current examples and statistics from web search context
+      - Reference library materials for authoritative backing
+      - Humanize the text with engaging, practical tone
+      - Focus on immediate applicability for marketing professionals
+      
+      Generate the complete HTML lesson content now.
+    `;
 
-    Context:
-    Course: ${courseContext}
-    Topic: ${topicContext}
-    Use the attached files from vector store library as reference material and use it as relevant.`;
+    console.log(`📡 Making RAG API call to /v1/chat/completions endpoint...`);
 
-    const userPrompt = `TASK
-    Develop a practical, step-by-step section on section title "${lessonData.lessonTitle}" 
-    with section description as "${lessonData.lessonDescription}" for the target audience from context. 
-    Generate the readingContent: The main text content (~1500-2000 words). Generate in HTML format.`;
-
+    // ✅ CORRECTED: Use the standard /v1/chat/completions endpoint with file_search tools
     const response = await axios.post(
-      'https://api.openai.com/v1/responses',
+      'https://api.openai.com/v1/chat/completions',
       {
-        model: "gpt-4.1-mini-2025-04-14",
-        tools: [
-          {
-            type: "file_search",
-            vector_store_ids: [vectorStoreId],
-            max_num_results: 3
-          }
-        ],
-        input: [
+        model: "gpt-4o-mini",
+        messages: [
           {
             role: "system",
             content: systemPrompt
           },
           {
-            role: "user",
+            role: "user", 
             content: userPrompt
           }
         ],
-        max_output_tokens: 2400
+        tools: [
+          {
+            type: "file_search"
+          }
+        ],
+        tool_resources: {
+          file_search: {
+            vector_store_ids: [vectorStoreId]
+          }
+        },
+        max_tokens: 2400
       },
       {
         headers: {
           'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'OpenAI-Beta': 'assistants=v2'
         }
       }
     );
+
+    console.log(`✅ RAG API call successful! Response received.`);
+    console.log(`📊 Response structure:`, Object.keys(response.data));
+
+    // Handle the standard chat completions response format
+    const content = response.data.choices?.[0]?.message?.content;
     
-    return response.data;
+    if (!content) {
+      console.error('❌ No content received from RAG API');
+      throw new Error('No content received from RAG API response');
+    }
+
+    console.log(`📝 RAG content generated: ${content.length} characters`);
+
+    return {
+      content: content,
+      tokenUsage: response.data.usage
+    };
   } catch (error) {
-    console.error('Error generating content with RAG:', error);
+    console.error('❌ Error generating content with RAG:', error);
+    
+    if (error.response) {
+      console.error('API Response Status:', error.response.status);
+      console.error('API Response Data:', error.response.data);
+      
+      // Handle specific API errors
+      if (error.response.status === 404) {
+        throw new Error('RAG API endpoint not available. Using fallback content generation.');
+      } else if (error.response.status === 400) {
+        throw new Error(`Invalid RAG request: ${error.response.data?.error?.message || 'Bad request'}`);
+      }
+    }
+    
     throw error;
   }
 };

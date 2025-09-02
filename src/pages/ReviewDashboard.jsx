@@ -17,25 +17,23 @@ import EnhancedStatusBar from '../components/ui/EnhancedStatusBar';
 import KnowledgeLibraryBadge from '../components/rag/KnowledgeLibraryBadge';
 import { generateCourseContent, generateCourseTopicsAndLessons } from '../services/enhancedAiService';
 
-const {
-  FiEdit3, FiSave, FiPlay, FiChevronDown, FiChevronRight, FiBook, FiTarget, FiList, FiInfo, FiPlus, FiTrash2, FiRefreshCw, FiFileText, FiX, FiDatabase
-} = FiIcons;
+const { FiEdit3, FiSave, FiPlay, FiChevronDown, FiChevronRight, FiBook, FiTarget, FiList, FiInfo, FiPlus, FiTrash2, FiRefreshCw, FiFileText, FiX, FiDatabase, FiSearch, FiGlobe, FiExternalLink, FiChevronUp, FiSettings, FiMapPin, FiClock, FiFilter, FiZap } = FiIcons;
 
 const ReviewDashboard = () => {
   const { programId } = useParams();
   const navigate = useNavigate();
   const { programs, currentProgram, setCurrentProgram, updateProgram } = useProgramStore();
-  const { getActiveOpenAIKeys, getDecryptedLMSCredentials } = useSettingsStore();
-  const { 
-    generationStatus, 
-    startGeneration, 
-    updateProgress, 
+  const { getActiveOpenAIKeys, getActivePerplexityKeys, getDecryptedLMSCredentials } = useSettingsStore();
+  const {
+    generationStatus,
+    startGeneration,
+    updateProgress,
     updateTaskProgress,
     pauseGeneration,
     resumeGeneration,
     abortGeneration,
-    completeGeneration, 
-    failGeneration, 
+    completeGeneration,
+    failGeneration,
     minimizeStatus,
     maximizeStatus,
     hideStatus,
@@ -52,6 +50,24 @@ const ReviewDashboard = () => {
   const [regeneratingCourse, setRegeneratingCourse] = useState(false);
   const [activeApiKey, setActiveApiKey] = useState(null);
 
+  // New state for Perplexity Sonar web search context
+  const [usePerplexityWebSearch, setUsePerplexityWebSearch] = useState(false);
+
+  // New state for Sonar configuration
+  const [showSonarConfig, setShowSonarConfig] = useState(false);
+  const [sonarConfig, setSonarConfig] = useState({
+    sonarModel: 'sonar',
+    searchMode: 'web_search',
+    searchContextSize: 'medium',
+    searchRecency: 'month',
+    domainFilter: '',
+    temperature: 0.3,
+    maxTokens: 1400,
+    country: '',
+    region: '',
+    city: ''
+  });
+
   // New state for additional context modals
   const [showTopicContextModal, setShowTopicContextModal] = useState(false);
   const [showLessonContextModal, setShowLessonContextModal] = useState(false);
@@ -59,7 +75,21 @@ const ReviewDashboard = () => {
   const [selectedLessonForContext, setSelectedLessonForContext] = useState(null);
   const [topicContextInput, setTopicContextInput] = useState('');
   const [lessonContextInput, setLessonContextInput] = useState('');
-  
+
+  // New state for citations display
+  const [showCitationsModal, setShowCitationsModal] = useState(false);
+  const [citationsExpanded, setCitationsExpanded] = useState(false);
+
+  // Validation function for domain filter
+  const validateDomainFilter = (domains) => {
+    if (!domains.trim()) return true;
+    
+    const domainList = domains.split(',').map(d => d.trim());
+    const domainRegex = /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?(\.[a-zA-Z]{2,})+$/;
+    
+    return domainList.every(domain => domainRegex.test(domain));
+  };
+
   // Get API key for vector stores
   useEffect(() => {
     const keys = getActiveOpenAIKeys();
@@ -78,12 +108,26 @@ const ReviewDashboard = () => {
           setExpandedTopics(new Set([program.courses[0].topics[0].id]));
         }
       }
+      
+      // Load existing sonar config if available
+      if (program.sonarConfig) {
+        setSonarConfig(program.sonarConfig);
+      }
     } else {
       navigate('/');
     }
   }, [programId, programs, setCurrentProgram, navigate]);
 
   const selectedCourse = currentProgram?.courses?.find(c => c.id === selectedCourseId);
+
+  // Save sonar config to program
+  const saveSonarConfig = () => {
+    const updatedProgram = { ...currentProgram };
+    updatedProgram.sonarConfig = sonarConfig;
+    updateProgram(programId, updatedProgram);
+    toast.success('Sonar configuration saved!');
+    setShowSonarConfig(false);
+  };
 
   const handleEdit = (type, id, field, value) => {
     setEditingItem({ type, id, field, value });
@@ -246,6 +290,7 @@ const ReviewDashboard = () => {
 
     try {
       updateProgress(20, 'Analyzing course context and requirements...', 'analysis');
+
       const result = await generateCourseTopicsAndLessons(
         selectedCourse,
         currentProgram.programContext,
@@ -256,6 +301,7 @@ const ReviewDashboard = () => {
       );
 
       updateProgress(60, 'Generating new topics and lessons...', 'generation');
+
       if (result.topics && result.topics.length > 0) {
         const updatedProgram = { ...currentProgram };
         const course = updatedProgram.courses.find(c => c.id === selectedCourseId);
@@ -299,6 +345,7 @@ const ReviewDashboard = () => {
     }
 
     const activeKeys = getActiveOpenAIKeys();
+    const perplexityKeys = getActivePerplexityKeys();
     const lmsCredentials = getDecryptedLMSCredentials();
 
     if (activeKeys.length === 0) {
@@ -313,27 +360,50 @@ const ReviewDashboard = () => {
       return;
     }
 
+    // Check if Perplexity is required but not available
+    if (usePerplexityWebSearch && perplexityKeys.length === 0) {
+      toast.error('Perplexity web search is enabled but no Perplexity API keys found. Please add a Perplexity API key or disable web search.');
+      return;
+    }
+
+    // Validate domain filter if provided
+    if (sonarConfig.domainFilter && !validateDomainFilter(sonarConfig.domainFilter)) {
+      toast.error('Invalid domain filter format. Please use valid domain names separated by commas (e.g., wordpress.org, github.com)');
+      return;
+    }
+
     setGenerating(true);
-    
+
     // Calculate totals
     const totalTopics = selectedCourse.topics?.length || 0;
     const totalLessons = selectedCourse.topics?.reduce((total, topic) => total + (topic.lessons?.length || 0), 0) || 0;
-    
-    startGeneration(selectedCourse.courseTitle, totalTopics, totalLessons, 'Starting full course content generation...');
+
+    startGeneration(
+      selectedCourse.courseTitle,
+      totalTopics,
+      totalLessons,
+      'Starting full course content generation...'
+    );
+
     toast.loading('Generating full course content...', { id: 'generating-content' });
 
     try {
       await generateCourseContent(
-        selectedCourse, 
-        lmsCredentials, 
-        activeKeys[0].key, 
+        selectedCourse,
+        lmsCredentials,
+        activeKeys[0].key,
         {
           onProgress: updateProgress,
           onTaskUpdate: updateTaskProgress,
           checkPauseStatus,
           getAbortSignal
         },
-        vectorStoreAssignments
+        vectorStoreAssignments,
+        {
+          usePerplexityWebSearch,
+          perplexityApiKey: perplexityKeys.length > 0 ? perplexityKeys[0].key : null,
+          sonarConfig: usePerplexityWebSearch ? sonarConfig : null
+        }
       );
 
       updateProgram(programId, {
@@ -345,7 +415,6 @@ const ReviewDashboard = () => {
       toast.success('Content generation completed! Check your LMS for the uploaded materials.', { id: 'generating-content' });
     } catch (error) {
       console.error('Error generating content:', error);
-      
       if (error.message === 'Request aborted by user') {
         toast.error('Content generation was aborted.', { id: 'generating-content' });
       } else {
@@ -356,6 +425,320 @@ const ReviewDashboard = () => {
       setGenerating(false);
     }
   };
+
+  // Sonar Configuration Modal Component
+  const SonarConfigModal = () => (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={() => setShowSonarConfig(false)}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <SafeIcon icon={FiSettings} className="text-2xl text-purple-600" />
+            <h3 className="text-xl font-bold">Sonar Web Search Configuration</h3>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setShowSonarConfig(false)}>
+            <SafeIcon icon={FiX} />
+          </Button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Basic Configuration */}
+          <Card className="p-4">
+            <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
+              <SafeIcon icon={FiZap} className="mr-2 text-purple-600" />
+              Basic Configuration
+            </h4>
+            <div className="space-y-4">
+              <Select
+                label="Sonar Model"
+                value={sonarConfig.sonarModel}
+                onChange={(e) => setSonarConfig({ ...sonarConfig, sonarModel: e.target.value })}
+                options={[
+                  { value: 'sonar', label: 'Sonar (Standard)' },
+                  { value: 'sonar-pro', label: 'Sonar Pro (Advanced)' }
+                ]}
+              />
+              
+              <Select
+                label="Search Mode"
+                value={sonarConfig.searchMode}
+                onChange={(e) => setSonarConfig({ ...sonarConfig, searchMode: e.target.value })}
+                options={[
+                  { value: 'web_search', label: 'Web Search' },
+                  { value: 'academic', label: 'Academic Search' },
+                  { value: 'news', label: 'News Search' }
+                ]}
+              />
+
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Temperature"
+                  type="number"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={sonarConfig.temperature}
+                  onChange={(e) => setSonarConfig({ ...sonarConfig, temperature: parseFloat(e.target.value) })}
+                />
+                <Input
+                  label="Max Tokens"
+                  type="number"
+                  min="100"
+                  max="4000"
+                  value={sonarConfig.maxTokens}
+                  onChange={(e) => setSonarConfig({ ...sonarConfig, maxTokens: parseInt(e.target.value) })}
+                />
+              </div>
+            </div>
+          </Card>
+
+          {/* Search Configuration */}
+          <Card className="p-4">
+            <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
+              <SafeIcon icon={FiSearch} className="mr-2 text-blue-600" />
+              Search Configuration
+            </h4>
+            <div className="space-y-4">
+              <Select
+                label="Search Context Size"
+                value={sonarConfig.searchContextSize}
+                onChange={(e) => setSonarConfig({ ...sonarConfig, searchContextSize: e.target.value })}
+                options={[
+                  { value: 'low', label: 'Low Context' },
+                  { value: 'medium', label: 'Medium Context' },
+                  { value: 'high', label: 'High Context' }
+                ]}
+              />
+
+              <Select
+                label="Search Recency Filter"
+                value={sonarConfig.searchRecency}
+                onChange={(e) => setSonarConfig({ ...sonarConfig, searchRecency: e.target.value })}
+                options={[
+                  { value: 'day', label: 'Last Day' },
+                  { value: 'week', label: 'Last Week' },
+                  { value: 'month', label: 'Last Month' },
+                  { value: 'year', label: 'Last Year' }
+                ]}
+              />
+
+              <div>
+                <Input
+                  label="Domain Filter (Optional)"
+                  placeholder="wordpress.org, github.com, stackoverflow.com"
+                  value={sonarConfig.domainFilter}
+                  onChange={(e) => setSonarConfig({ ...sonarConfig, domainFilter: e.target.value })}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Comma-separated domain names to restrict search to specific sites
+                </p>
+                {sonarConfig.domainFilter && !validateDomainFilter(sonarConfig.domainFilter) && (
+                  <p className="text-xs text-red-600 mt-1">
+                    Invalid domain format. Use valid domains like: example.com, site.org
+                  </p>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* Location Configuration */}
+          <Card className="p-4 md:col-span-2">
+            <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
+              <SafeIcon icon={FiMapPin} className="mr-2 text-green-600" />
+              User Location (Optional)
+            </h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Input
+                label="Country"
+                placeholder="e.g., United States"
+                value={sonarConfig.country}
+                onChange={(e) => setSonarConfig({ ...sonarConfig, country: e.target.value })}
+              />
+              <Input
+                label="Region/State"
+                placeholder="e.g., California"
+                value={sonarConfig.region}
+                onChange={(e) => setSonarConfig({ ...sonarConfig, region: e.target.value })}
+              />
+              <Input
+                label="City"
+                placeholder="e.g., San Francisco"
+                value={sonarConfig.city}
+                onChange={(e) => setSonarConfig({ ...sonarConfig, city: e.target.value })}
+              />
+            </div>
+            <p className="text-sm text-gray-600 mt-2">
+              Location information helps provide geographically relevant search results
+            </p>
+          </Card>
+        </div>
+
+        {/* Configuration Preview */}
+        <Card className="p-4 mt-6 bg-gray-50">
+          <h4 className="font-semibold text-gray-900 mb-2">Configuration Preview</h4>
+          <pre className="text-sm text-gray-700 bg-white p-3 rounded border overflow-x-auto">
+{JSON.stringify({
+  model: sonarConfig.sonarModel,
+  search_mode: sonarConfig.searchMode,
+  web_search_options: {
+    search_context_size: sonarConfig.searchContextSize,
+    search_recency_filter: sonarConfig.searchRecency,
+    ...(sonarConfig.domainFilter && {
+      search_domain_filter: sonarConfig.domainFilter.split(',').map(d => d.trim()).filter(d => d)
+    })
+  },
+  temperature: sonarConfig.temperature,
+  max_tokens: sonarConfig.maxTokens,
+  ...(sonarConfig.country || sonarConfig.region || sonarConfig.city) && {
+    user_location: {
+      ...(sonarConfig.country && { country: sonarConfig.country }),
+      ...(sonarConfig.region && { region: sonarConfig.region }),
+      ...(sonarConfig.city && { city: sonarConfig.city })
+    }
+  }
+}, null, 2)}
+          </pre>
+        </Card>
+
+        <div className="flex justify-end space-x-3 mt-6">
+          <Button variant="secondary" onClick={() => setShowSonarConfig(false)}>
+            Cancel
+          </Button>
+          <Button onClick={saveSonarConfig}>
+            Save Configuration
+          </Button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+
+  // Citations Modal Component
+  const CitationsModal = () => (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
+      onClick={() => setShowCitationsModal(false)}
+    >
+      <motion.div
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
+        className="bg-white rounded-xl p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center space-x-3">
+            <SafeIcon icon={FiExternalLink} className="text-2xl text-primary-600" />
+            <h3 className="text-xl font-bold">Research Sources & Citations</h3>
+          </div>
+          <Button variant="ghost" size="sm" onClick={() => setShowCitationsModal(false)}>
+            <SafeIcon icon={FiX} />
+          </Button>
+        </div>
+
+        <div className="space-y-6">
+          {/* Research Context Citations */}
+          {currentProgram?.researchCitations && currentProgram.researchCitations.length > 0 && (
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <SafeIcon icon={FiSearch} className="mr-2 text-purple-600" />
+                Industry Research Sources
+              </h4>
+              <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
+                <p className="text-purple-800 text-sm mb-3">
+                  These sources were used to gather current industry trends and market insights for your program context.
+                </p>
+                <div className="grid gap-3">
+                  {currentProgram.researchCitations.map((citation, index) => (
+                    <div key={index} className="flex items-start space-x-3 p-3 bg-white rounded-lg border border-purple-200">
+                      <SafeIcon icon={FiExternalLink} className="text-purple-600 mt-1" />
+                      <div className="flex-1">
+                        <h5 className="font-medium text-gray-900">{citation.title || `Source ${index + 1}`}</h5>
+                        <a
+                          href={citation.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-purple-600 hover:text-purple-800 text-sm break-all"
+                        >
+                          {citation.url}
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Structure Generation Citations */}
+          {currentProgram?.structureCitations && currentProgram.structureCitations.length > 0 && (
+            <div>
+              <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+                <SafeIcon icon={FiBook} className="mr-2 text-indigo-600" />
+                Course Structure Generation Sources
+                {currentProgram.usedSonarProStructure && (
+                  <span className="ml-2 text-xs px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full">
+                    Sonar-Pro Enhanced
+                  </span>
+                )}
+              </h4>
+              <div className="bg-indigo-50 border border-indigo-200 rounded-lg p-4 mb-4">
+                <p className="text-indigo-800 text-sm mb-3">
+                  {currentProgram.usedSonarProStructure
+                    ? "These sources were used by Perplexity Sonar-Pro to generate your course structure with real-time web context and enhanced reasoning."
+                    : "These sources were referenced during the course structure generation process."
+                  }
+                </p>
+                <div className="grid gap-3">
+                  {currentProgram.structureCitations.map((citation, index) => (
+                    <div key={index} className="flex items-start space-x-3 p-3 bg-white rounded-lg border border-indigo-200">
+                      <SafeIcon icon={FiExternalLink} className="text-indigo-600 mt-1" />
+                      <div className="flex-1">
+                        <h5 className="font-medium text-gray-900">{citation.title || `Source ${index + 1}`}</h5>
+                        <a
+                          href={citation.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-indigo-600 hover:text-indigo-800 text-sm break-all"
+                        >
+                          {citation.url}
+                        </a>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* No Citations Available */}
+          {(!currentProgram?.researchCitations || currentProgram.researchCitations.length === 0) &&
+            (!currentProgram?.structureCitations || currentProgram.structureCitations.length === 0) && (
+              <div className="text-center py-8">
+                <SafeIcon icon={FiInfo} className="text-4xl text-gray-300 mx-auto mb-4" />
+                <h4 className="text-lg font-semibold text-gray-900 mb-2">No Citations Available</h4>
+                <p className="text-gray-600">
+                  This program was generated without external research sources or the citations were not captured.
+                </p>
+              </div>
+            )}
+        </div>
+      </motion.div>
+    </motion.div>
+  );
 
   // Info Modal Component
   const InfoModal = () => (
@@ -378,11 +761,11 @@ const ReviewDashboard = () => {
           <p>Here's how the content generation process works:</p>
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">1</div>
-            <p>The system first conducts comprehensive research using AI o3-mini to analyze your niche and create detailed program context.</p>
+            <p>The system first conducts comprehensive research using AI to analyze your niche and create detailed program context.</p>
           </div>
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">2</div>
-            <p>Based on the research, GPT-4.1 generates the program structure with detailed courses, topics, and lessons.</p>
+            <p>Based on the research, GPT-4.1 or Sonar-Pro generates the program structure with detailed courses, topics, and lessons.</p>
           </div>
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">3</div>
@@ -395,6 +778,10 @@ const ReviewDashboard = () => {
           <div className="flex items-start space-x-3">
             <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">5</div>
             <p>Knowledge libraries can be attached to topics or lessons to enhance content with relevant information from your documents.</p>
+          </div>
+          <div className="flex items-start space-x-3">
+            <div className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center flex-shrink-0 mt-0.5">6</div>
+            <p>Perplexity web search provides real-time context and current industry insights for each lesson with configurable parameters.</p>
           </div>
         </div>
         <div className="mt-6 flex justify-end">
@@ -429,6 +816,7 @@ const ReviewDashboard = () => {
             <SafeIcon icon={FiX} />
           </Button>
         </div>
+
         <div className="mb-4">
           <h4 className="font-medium text-gray-900 mb-2">
             {selectedTopicForContext?.topicTitle}
@@ -437,6 +825,7 @@ const ReviewDashboard = () => {
             Add additional research, statistics, quotes, or latest findings that will enhance all lessons in this topic.
           </p>
         </div>
+
         <Textarea
           label="Additional Context (Optional)"
           placeholder="Add research findings, statistics, industry quotes, latest trends, or any additional context that should be included in all lessons for this topic..."
@@ -445,6 +834,7 @@ const ReviewDashboard = () => {
           onChange={(e) => setTopicContextInput(e.target.value)}
           className="mb-6"
         />
+
         <div className="flex justify-end space-x-3">
           <Button variant="secondary" onClick={() => setShowTopicContextModal(false)}>
             Cancel
@@ -482,6 +872,7 @@ const ReviewDashboard = () => {
             <SafeIcon icon={FiX} />
           </Button>
         </div>
+
         <div className="mb-4">
           <h4 className="font-medium text-gray-900 mb-2">
             {selectedLessonForContext?.lessonTitle}
@@ -490,6 +881,7 @@ const ReviewDashboard = () => {
             Add specific context, examples, or additional information for this particular lesson.
           </p>
         </div>
+
         <Textarea
           label="Lesson-Specific Additional Context (Optional)"
           placeholder="Add specific examples, case studies, technical details, or any additional context that should be included specifically in this lesson..."
@@ -498,6 +890,7 @@ const ReviewDashboard = () => {
           onChange={(e) => setLessonContextInput(e.target.value)}
           className="mb-6"
         />
+
         <div className="flex justify-end space-x-3">
           <Button variant="secondary" onClick={() => setShowLessonContextModal(false)}>
             Cancel
@@ -548,6 +941,8 @@ const ReviewDashboard = () => {
         {showInfoModal && <InfoModal />}
         {showTopicContextModal && <TopicContextModal />}
         {showLessonContextModal && <LessonContextModal />}
+        {showCitationsModal && <CitationsModal />}
+        {showSonarConfig && <SonarConfigModal />}
       </AnimatePresence>
 
       <motion.div
@@ -564,16 +959,141 @@ const ReviewDashboard = () => {
               Review the generated program structure, make edits, and generate content for specific courses.
             </p>
           </div>
-          <Button
-            variant="ghost"
-            className="flex items-center space-x-2"
-            onClick={() => setShowInfoModal(true)}
-          >
-            <SafeIcon icon={FiInfo} className="text-primary-600" />
-            <span>How it works</span>
-          </Button>
+          <div className="flex items-center space-x-3">
+            <Button
+              variant="ghost"
+              className="flex items-center space-x-2"
+              onClick={() => setShowCitationsModal(true)}
+            >
+              <SafeIcon icon={FiExternalLink} className="text-primary-600" />
+              <span>View Sources</span>
+            </Button>
+            <Button
+              variant="ghost"
+              className="flex items-center space-x-2"
+              onClick={() => setShowInfoModal(true)}
+            >
+              <SafeIcon icon={FiInfo} className="text-primary-600" />
+              <span>How it works</span>
+            </Button>
+          </div>
         </div>
       </motion.div>
+
+      {/* Citations Summary Banner */}
+      {(currentProgram?.researchCitations?.length > 0 || currentProgram?.structureCitations?.length > 0) && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8"
+        >
+          <Card className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
+            <div className="flex items-center justify-between cursor-pointer" onClick={() => setCitationsExpanded(!citationsExpanded)}>
+              <div className="flex items-center space-x-3">
+                <div className="p-2 bg-blue-100 rounded-full">
+                  <SafeIcon icon={FiExternalLink} className="text-blue-600 text-lg" />
+                </div>
+                <div>
+                  <h3 className="font-medium text-blue-800">Research-Enhanced Program</h3>
+                  <p className="text-blue-700 text-sm">
+                    This program was generated using {currentProgram.researchEnhanced ? 'real-time industry research' : 'enhanced AI analysis'}
+                    {currentProgram.usedSonarProStructure && ' with Sonar-Pro structure generation'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowCitationsModal(true);
+                  }}
+                  className="text-blue-700 hover:text-blue-800"
+                >
+                  View All Sources
+                </Button>
+                <SafeIcon icon={citationsExpanded ? FiChevronUp : FiChevronDown} className="text-blue-600" />
+              </div>
+            </div>
+            <AnimatePresence>
+              {citationsExpanded && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="mt-4 pt-4 border-t border-blue-200"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {currentProgram.researchCitations?.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-blue-800 mb-2 flex items-center">
+                          <SafeIcon icon={FiSearch} className="mr-2" />
+                          Industry Research ({currentProgram.researchCitations.length} sources)
+                        </h4>
+                        <div className="space-y-2">
+                          {currentProgram.researchCitations.slice(0, 3).map((citation, index) => (
+                            <div key={index} className="text-sm">
+                              <a
+                                href={citation.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 truncate block"
+                                title={citation.title || citation.url}
+                              >
+                                {citation.title || `Source ${index + 1}`}
+                              </a>
+                            </div>
+                          ))}
+                          {currentProgram.researchCitations.length > 3 && (
+                            <p className="text-xs text-blue-600">
+                              +{currentProgram.researchCitations.length - 3} more sources
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {currentProgram.structureCitations?.length > 0 && (
+                      <div>
+                        <h4 className="font-medium text-blue-800 mb-2 flex items-center">
+                          <SafeIcon icon={FiBook} className="mr-2" />
+                          Structure Generation ({currentProgram.structureCitations.length} sources)
+                          {currentProgram.usedSonarProStructure && (
+                            <span className="ml-1 text-xs px-1 py-0.5 bg-indigo-100 text-indigo-700 rounded">
+                              Sonar-Pro
+                            </span>
+                          )}
+                        </h4>
+                        <div className="space-y-2">
+                          {currentProgram.structureCitations.slice(0, 3).map((citation, index) => (
+                            <div key={index} className="text-sm">
+                              <a
+                                href={citation.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 hover:text-blue-800 truncate block"
+                                title={citation.title || citation.url}
+                              >
+                                {citation.title || `Source ${index + 1}`}
+                              </a>
+                            </div>
+                          ))}
+                          {currentProgram.structureCitations.length > 3 && (
+                            <p className="text-xs text-blue-600">
+                              +{currentProgram.structureCitations.length - 3} more sources
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </Card>
+        </motion.div>
+      )}
 
       {/* Review Notice Banner */}
       <motion.div
@@ -589,8 +1109,7 @@ const ReviewDashboard = () => {
             <div>
               <h3 className="font-medium text-blue-800">Review Before Generation</h3>
               <p className="text-blue-700">
-                You're reviewing the program structure based on comprehensive AI research. Edit, add, or remove topics and lessons before generating full content.
-                You can also add knowledge libraries to topics or lessons to enhance content with relevant information.
+                You're reviewing the program structure based on comprehensive AI research. Edit, add, or remove topics and lessons before generating full content. You can also add knowledge libraries to topics or lessons to enhance content with relevant information.
               </p>
             </div>
           </div>
@@ -618,11 +1137,59 @@ const ReviewDashboard = () => {
 
             {selectedCourse && (
               <div className="space-y-4">
+                {/* Perplexity Web Search Toggle */}
+                <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <SafeIcon icon={FiGlobe} className="text-purple-600 text-lg" />
+                    <h4 className="font-medium text-purple-800">Web Search Enhancement</h4>
+                  </div>
+                  <label className="flex items-center space-x-3 mb-3">
+                    <input
+                      type="checkbox"
+                      checked={usePerplexityWebSearch}
+                      onChange={(e) => setUsePerplexityWebSearch(e.target.checked)}
+                      className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+                    />
+                    <div>
+                      <span className="text-sm font-medium text-purple-800">
+                        Use Perplexity Web Search Context
+                      </span>
+                      <p className="text-xs text-purple-700 mt-1">
+                        Generate real-time web research context for each lesson using Perplexity Sonar
+                      </p>
+                    </div>
+                  </label>
+                  
+                  {usePerplexityWebSearch && (
+                    <div className="mt-3 pt-3 border-t border-purple-200">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowSonarConfig(true)}
+                        className="flex items-center space-x-2 text-purple-700 hover:text-purple-800"
+                      >
+                        <SafeIcon icon={FiSettings} />
+                        <span>Configure Sonar Parameters</span>
+                      </Button>
+                      <p className="text-xs text-purple-700 mt-1">
+                        Model: {sonarConfig.sonarModel} | Context: {sonarConfig.searchContextSize} | Recency: {sonarConfig.searchRecency}
+                      </p>
+                    </div>
+                  )}
+
+                  {usePerplexityWebSearch && getActivePerplexityKeys().length === 0 && (
+                    <div className="mt-2 text-xs text-red-600">
+                      ⚠️ No Perplexity API keys found. Please add one in settings.
+                    </div>
+                  )}
+                </div>
+
                 <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">
                   <p className="text-sm text-yellow-800 font-medium">
                     After reviewing and editing, click "Generate Content" to create the full course in your LMS
                   </p>
                 </div>
+
                 <Button
                   onClick={handleGenerateContent}
                   loading={generating}
@@ -631,6 +1198,7 @@ const ReviewDashboard = () => {
                   <SafeIcon icon={FiPlay} />
                   <span>Generate Content</span>
                 </Button>
+
                 <Button
                   onClick={handleRegenerateCourse}
                   loading={regeneratingCourse}
@@ -640,6 +1208,7 @@ const ReviewDashboard = () => {
                   <SafeIcon icon={FiRefreshCw} />
                   <span>Regenerate Course</span>
                 </Button>
+
                 <div className="text-sm text-gray-600">
                   <p><strong>Topics:</strong> {selectedCourse.topics?.length || 0}</p>
                   <p><strong>Total Lessons:</strong> {selectedCourse.topics?.reduce(
@@ -650,7 +1219,7 @@ const ReviewDashboard = () => {
             )}
           </Card>
 
-          {/* Info Card */}
+          {/* Info Cards remain the same... */}
           <Card className="p-6 mt-6 bg-gradient-to-r from-primary-50 to-primary-100 border-primary-200">
             <h3 className="font-medium text-primary-800 mb-2">Content Generation Details</h3>
             <p className="text-sm text-primary-700 mb-4">
@@ -680,6 +1249,39 @@ const ReviewDashboard = () => {
               <li className="flex items-start">
                 <SafeIcon icon={FiDatabase} className="mr-2 text-primary-600 mt-0.5" />
                 <span>Knowledge library integration for relevant content</span>
+              </li>
+              <li className="flex items-start">
+                <SafeIcon icon={FiGlobe} className="mr-2 text-primary-600 mt-0.5" />
+                <span>Real-time web search context (if enabled)</span>
+              </li>
+            </ul>
+          </Card>
+
+          {/* Enhanced Web Search Enhancement Info */}
+          <Card className="p-6 mt-6 bg-gradient-to-r from-purple-50 to-purple-100 border-purple-200">
+            <div className="flex items-center space-x-2 mb-2">
+              <SafeIcon icon={FiGlobe} className="text-purple-600" />
+              <h3 className="font-medium text-purple-800">Advanced Web Search Enhancement</h3>
+            </div>
+            <p className="text-sm text-purple-700 mb-4">
+              When enabled, Perplexity web search will:
+            </p>
+            <ul className="text-sm text-purple-700 space-y-2">
+              <li className="flex items-start">
+                <div className="w-5 h-5 rounded-full bg-purple-200 text-purple-700 flex items-center justify-center flex-shrink-0 mr-2">1</div>
+                <span>Generate topic-level web search context for current trends</span>
+              </li>
+              <li className="flex items-start">
+                <div className="w-5 h-5 rounded-full bg-purple-200 text-purple-700 flex items-center justify-center flex-shrink-0 mr-2">2</div>
+                <span>Create lesson-specific web research context (300-400 tokens each)</span>
+              </li>
+              <li className="flex items-start">
+                <div className="w-5 h-5 rounded-full bg-purple-200 text-purple-700 flex items-center justify-center flex-shrink-0 mr-2">3</div>
+                <span>Integrate real-time industry insights and current examples</span>
+              </li>
+              <li className="flex items-start">
+                <div className="w-5 h-5 rounded-full bg-purple-200 text-purple-700 flex items-center justify-center flex-shrink-0 mr-2">4</div>
+                <span>Enhanced with configurable parameters: model, context size, recency filter, domain filter, and location-based results</span>
               </li>
             </ul>
           </Card>
@@ -837,7 +1439,7 @@ const ReviewDashboard = () => {
                             </div>
                           )}
                         </div>
-                        
+
                         {/* Knowledge Library Button for Topic */}
                         {activeApiKey && (
                           <KnowledgeLibraryBadge
@@ -846,7 +1448,7 @@ const ReviewDashboard = () => {
                             apiKey={activeApiKey}
                           />
                         )}
-                        
+
                         {/* Topic Additional Context Button */}
                         <Button
                           variant="ghost"
@@ -857,7 +1459,7 @@ const ReviewDashboard = () => {
                         >
                           <SafeIcon icon={FiDatabase} />
                         </Button>
-                        
+
                         <Button
                           variant="ghost"
                           size="sm"
@@ -903,7 +1505,6 @@ const ReviewDashboard = () => {
                             Additional context added
                           </div>
                         )}
-                        
                         {/* Show knowledge library indicator */}
                         {vectorStoreAssignments[topic.id] && (
                           <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-blue-100 text-blue-700">
@@ -1003,7 +1604,6 @@ const ReviewDashboard = () => {
                                         Lesson context added
                                       </div>
                                     )}
-                                    
                                     {/* Show knowledge library indicator */}
                                     {vectorStoreAssignments[lesson.id] && (
                                       <div className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">
@@ -1013,7 +1613,7 @@ const ReviewDashboard = () => {
                                     )}
                                   </div>
                                 </div>
-                                
+
                                 {/* Knowledge Library Button for Lesson */}
                                 {activeApiKey && (
                                   <KnowledgeLibraryBadge
@@ -1022,7 +1622,7 @@ const ReviewDashboard = () => {
                                     apiKey={activeApiKey}
                                   />
                                 )}
-                                
+
                                 {/* Lesson Additional Context Button */}
                                 <Button
                                   variant="ghost"
@@ -1033,7 +1633,7 @@ const ReviewDashboard = () => {
                                 >
                                   <SafeIcon icon={FiFileText} />
                                 </Button>
-                                
+
                                 <Button
                                   variant="ghost"
                                   size="sm"

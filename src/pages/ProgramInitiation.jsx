@@ -14,8 +14,10 @@ import Textarea from '../components/ui/Textarea';
 import Select from '../components/ui/Select';
 import Button from '../components/ui/Button';
 import StatusBar from '../components/ui/StatusBar';
+import DesignParametersForm from '../components/ui/DesignParametersForm';
 import { generateProgramStructure } from '../services/aiService';
 import { validateAllApiKeys } from '../services/enhancedApiKeyValidator';
+import { DEFAULT_DESIGN_PARAMETERS } from '../services/instructionalParameterService';
 
 const { FiTarget, FiBook, FiSettings, FiZap, FiAlertTriangle, FiCheckCircle, FiSearch, FiDatabase, FiBrain } = FiIcons;
 
@@ -23,6 +25,7 @@ const ProgramInitiation = () => {
   const [loading, setLoading] = useState(false);
   const [validatingKeys, setValidatingKeys] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
+  const [designParameters, setDesignParameters] = useState(DEFAULT_DESIGN_PARAMETERS);
   const navigate = useNavigate();
   const { addProgram } = useProgramStore();
   const { getActiveOpenAIKeys, getActivePerplexityKeys, getDecryptedLMSCredentials } = useSettingsStore();
@@ -86,6 +89,7 @@ const ProgramInitiation = () => {
 
   const onSubmit = async (data) => {
     console.log("🚀 Form submitted with data:", data);
+    console.log("🎯 Design parameters:", designParameters);
     
     const openaiKeys = getActiveOpenAIKeys();
     const perplexityKeys = getActivePerplexityKeys();
@@ -118,9 +122,8 @@ const ProgramInitiation = () => {
       // Step 1: Validate API keys
       updateProgress(5, 'Validating API keys...', 'validation');
       console.log("🔑 Validating API keys...");
-      
       const keyValidation = await validateAllApiKeys(openaiKeys, perplexityKeys);
-      
+
       if (!keyValidation.hasAnyValidKey) {
         throw new Error(`API Key Validation Failed: No valid API keys found`);
       }
@@ -141,7 +144,7 @@ const ProgramInitiation = () => {
       // Step 3: Generate program structure with enhanced research
       updateProgress(25, 'Conducting comprehensive research on your niche using AI...', 'research');
       console.log("🏗️ Generating program structure...");
-      
+
       // Use enhanced program generation with Perplexity research if available
       const programStructure = await generateProgramStructure(
         data,
@@ -155,6 +158,7 @@ const ProgramInitiation = () => {
       const newProgram = addProgram({
         ...data,
         ...programStructure,
+        designParameters, // ✅ NEW: Include design parameters in program
         status: 'draft',
         apiKeysUsed: {
           openai: keyValidation.openai.hasValidKey ? keyValidation.openai.validKey.label : null,
@@ -172,7 +176,6 @@ const ProgramInitiation = () => {
 
     } catch (error) {
       console.error('❌ Error generating program:', error);
-      
       let errorMessage = 'Failed to generate program structure. Please try again.';
       
       if (error.message.includes('API Key Validation Failed')) {
@@ -188,7 +191,7 @@ const ProgramInitiation = () => {
       } else if (error.message.includes('No valid JSON')) {
         errorMessage = 'The AI response was not in the expected format. Please try again.';
       }
-      
+
       toast.error(errorMessage);
       failGeneration(errorMessage);
     } finally {
@@ -233,10 +236,11 @@ const ProgramInitiation = () => {
             </div>
             <h2 className="text-xl font-semibold text-blue-900">API Key Validation</h2>
           </div>
+          
           <p className="text-blue-800 mb-4">
             Before generating your program, we'll validate your OpenAI and Perplexity API keys to ensure smooth operation with enhanced research capabilities.
           </p>
-          
+
           {validationResult && (
             <div className="mb-4 p-4 bg-white rounded-lg border border-blue-200">
               <h3 className="font-medium text-gray-900 mb-2">Validation Results:</h3>
@@ -256,7 +260,7 @@ const ProgramInitiation = () => {
               </div>
             </div>
           )}
-          
+
           <Button
             onClick={handleValidateKeys}
             loading={validatingKeys}
@@ -284,7 +288,7 @@ const ProgramInitiation = () => {
                 </div>
                 <h2 className="text-xl font-semibold text-gray-900">Program Details</h2>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Input
                   label="MicroMasters Program Niche"
@@ -296,7 +300,7 @@ const ProgramInitiation = () => {
                   error={errors.niche?.message}
                   className="md:col-span-2"
                 />
-                
+
                 <Textarea
                   label="Must-Have Aspects"
                   placeholder="List key concepts, skills, or topics that are mandatory for the curriculum..."
@@ -308,7 +312,7 @@ const ProgramInitiation = () => {
                   error={errors.mustHaveAspects?.message}
                   className="md:col-span-2"
                 />
-                
+
                 <Textarea
                   label="Other Design Considerations"
                   placeholder="Additional pedagogical notes, content style, target audience nuances..."
@@ -318,6 +322,20 @@ const ProgramInitiation = () => {
                 />
               </div>
             </Card>
+          </motion.div>
+
+          {/* ✅ NEW: Design Parameters Section */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.15 }}
+          >
+            <DesignParametersForm
+              designParameters={designParameters}
+              onChange={setDesignParameters}
+              title="Program Design Parameters"
+              description="Configure default instructional design parameters for all courses in this program. These can be overridden at the course level during review."
+            />
           </motion.div>
 
           {/* Course Configuration */}
@@ -333,7 +351,7 @@ const ProgramInitiation = () => {
                 </div>
                 <h2 className="text-xl font-semibold text-gray-900">Course Configuration</h2>
               </div>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <Input
                   label="Number of Courses"
@@ -347,7 +365,7 @@ const ProgramInitiation = () => {
                   })}
                   error={errors.numberOfCourses?.message}
                 />
-                
+
                 <Select
                   label="Instructional Design Model"
                   options={instructionalModels}
@@ -356,7 +374,7 @@ const ProgramInitiation = () => {
                   })}
                   error={errors.instructionalDesignModel?.message}
                 />
-                
+
                 <div className="md:col-span-2 space-y-4">
                   <label className="flex items-center space-x-3">
                     <input
@@ -368,7 +386,7 @@ const ProgramInitiation = () => {
                       Generate presentation slides and voice-over scripts
                     </span>
                   </label>
-                  
+
                   <label className="flex items-center space-x-3">
                     <input
                       type="checkbox"
@@ -388,7 +406,7 @@ const ProgramInitiation = () => {
                   <p className="text-xs text-gray-500 ml-7">
                     Enhance your program with current market trends, statistics, and industry insights
                   </p>
-                  
+
                   {/* New Sonar-Pro Structure Generation Option */}
                   <label className="flex items-center space-x-3">
                     <input
@@ -427,7 +445,7 @@ const ProgramInitiation = () => {
                 </div>
                 <h2 className="text-xl font-semibold text-gray-900">Advanced Options</h2>
               </div>
-              
+
               <div className="grid grid-cols-1 gap-6">
                 <Input
                   label="Vector Store ID (Optional)"
@@ -457,6 +475,7 @@ const ProgramInitiation = () => {
                     <li>• LMS credentials must be configured for content deployment</li>
                     <li>• Internet connection is required for AI-powered content generation</li>
                     <li>• Enhanced research may take additional time but provides better results</li>
+                    <li>• Design parameters can be customized per course during the review phase</li>
                   </ul>
                 </div>
               </div>

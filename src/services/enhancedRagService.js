@@ -1,5 +1,6 @@
 import axios from 'axios';
-import {callPerplexityAPI} from './perplexityService';
+import { callPerplexityAPI } from './perplexityService';
+import { generateParameterInstructions } from './instructionalParameterService';
 
 /**
  * Enhanced token tracking utility
@@ -27,6 +28,7 @@ const TokenTracker = {
       webSearchContext: 0,
       ragContent: 0,
       courseContext: 0,
+      parameterInstructions: 0,
       totalPromptLength: 0
     },
     totals: {
@@ -62,6 +64,7 @@ const TokenTracker = {
 ║    • Web Search Context: ${session.contextSizes.webSearchContext} chars
 ║    • RAG Content: ${session.contextSizes.ragContent} chars
 ║    • Course Context: ${session.contextSizes.courseContext} chars
+║    • Parameter Instructions: ${session.contextSizes.parameterInstructions} chars
 ║    • Total Prompt Length: ${session.contextSizes.totalPromptLength} chars
 ║ 
 ║ 🎯 FINAL TOTALS:
@@ -250,6 +253,7 @@ Use the attached files as your primary source of authoritative information. Stru
 /**
  * Stage 2: Enhanced Content Generation using Chat Completions
  * Combines all contexts with priority hierarchy to generate comprehensive lesson content
+ * ✅ ENHANCED: Now includes design parameters for instructional intelligence
  */
 const generateEnhancedContent = async (
   apiKey,
@@ -261,26 +265,33 @@ const generateEnhancedContent = async (
   mustHaveAspects = '',
   designConsiderations = '',
   audienceContext = 'Procure to pay professionals',
+  designParameters = {}, // ✅ NEW: Design parameters for instructional tuning
   tokenSession,
   abortSignal = null
 ) => {
   try {
     console.log(`🚀 Stage 2: Starting enhanced content generation for lesson: ${lessonData.lessonTitle}`);
     
+    // ✅ NEW: Generate parameter-based instructional blocks
+    const parameterInstructions = generateParameterInstructions(designParameters);
+    
     // Track context sizes
     tokenSession.contextSizes.webSearchContext = webSearchContext.length;
     tokenSession.contextSizes.courseContext = courseContext.length;
+    tokenSession.contextSizes.parameterInstructions = parameterInstructions.length;
 
     console.log(`🌐 Web search context: ${webSearchContext.length} chars`);
     console.log(`📚 RAG content: ${ragContent.length} chars`);
     console.log(`📖 Course context: ${courseContext.length} chars`);
+    console.log(`⚙️ Parameter instructions: ${parameterInstructions.length} chars`);
 
-    // Enhanced system prompt for Stage 2
+    // Enhanced system prompt for Stage 2 with design parameters
     const systemPrompt = `You are an expert educational content creator specializing in comprehensive lesson development for professional education. Create engaging, practical, and comprehensive lesson content that combines multiple sources of information with clear priority hierarchy:
 
 PRIORITY 1 (HIGHEST): Current web research and industry trends
 PRIORITY 2 (HIGH): Authoritative reference materials and domain expertise  
 PRIORITY 3 (MEDIUM): Overall course context and design requirements
+PRIORITY 4 (INSTRUCTIONAL): Design parameters for pedagogical approach
 
 Generate content in well-structured HTML format suitable for professional LMS display. Use proper semantic HTML tags, headings, paragraphs, lists, and styling classes.
 
@@ -295,8 +306,8 @@ Focus on:
 Tone: Professional, engaging, and practical - similar to Malcolm Gladwell or Daniel Pink.
 Audience: ${audienceContext}`;
 
-    // Enhanced user prompt for Stage 2 with context priority hierarchy
-    const userPrompt = `Generate comprehensive lesson content (1500-2000 words in HTML) for:
+    // Enhanced user prompt for Stage 2 with parameter integration
+    const userPrompt = `Generate comprehensive lesson content (2000-2500 words in HTML) for:
 
 **LESSON:** "${lessonData.lessonTitle}"
 **LESSON DESCRIPTION:** "${lessonData.lessonDescription}"
@@ -315,13 +326,18 @@ Course Context: ${courseContext}
 Must-Have Aspects: ${mustHaveAspects}
 Design Considerations: ${designConsiderations}
 
+**PRIORITY 4 - INSTRUCTIONAL DESIGN PARAMETERS (Apply throughout content creation):**
+${parameterInstructions}
+
 **CONTENT REQUIREMENTS:**
-- Generate 1500-2000 words in clean, semantic HTML format
+- Generate 2000-2500 words in clean, semantic HTML format
 - Use proper HTML structure: <h1>, <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>
 - Include CSS classes for styling: highlight-box, warning-box, success-box, case-study
-- Structure with clear sections: Overview, Learning Objectives, Main Content, Case Study, Key Takeaways, Common Misconceptions, Practical Application
+- Structure with clear sections: Overview, Main Content (including subsection wise break down as relevant), Brief Key Takeaways, Brief Common Misconceptions, Brief Practical Application
+- Include a brief case study if specifically requested in the additional context (increase word limit to 3000 if including case study)
+- Apply the instructional design parameters consistently throughout all sections
 - Prioritize current industry insights from web research for examples and trends
-- Use reference library content for authoritative backing and detailed explanations
+- Use reference library content generated through file_search for authoritative backing and detailed explanations
 - Integrate course context for overall alignment and learning progression
 
 **HTML STRUCTURE TEMPLATE:**
@@ -330,19 +346,12 @@ Design Considerations: ${designConsiderations}
   
   <div class="lesson-overview">
     <h2>Overview</h2>
-    <p>[Brief lesson overview integrating current trends]</p>
-  </div>
-  
-  <div class="learning-objectives">
-    <h2>Learning Objectives</h2>
-    <ul>
-      <li>[Specific, measurable objectives]</li>
-    </ul>
+    <p>[Brief lesson overview integrating current trends and instructional approach]</p>
   </div>
   
   <div class="main-content">
     <h2>[Main Section Title]</h2>
-    <p>[Content with current examples and authoritative backing]</p>
+    <p>[Content with current examples and authoritative backing including relevant subsections]</p>
     
     <div class="highlight-box">
       <h4>Key Insight</h4>
@@ -359,7 +368,7 @@ Design Considerations: ${designConsiderations}
   <div class="key-takeaways">
     <h2>Key Takeaways</h2>
     <ul>
-      <li>[Actionable insights]</li>
+      <li>[Actionable insights aligned with instructional parameters]</li>
     </ul>
   </div>
   
@@ -381,9 +390,13 @@ Design Considerations: ${designConsiderations}
 1. Lead with current industry insights and trends from web research
 2. Support with authoritative content from reference library
 3. Frame within overall course context and learning objectives
-4. Make content immediately actionable for ${audienceContext}
-5. Use current examples and statistics where available
-6. Maintain professional tone while being engaging and practical
+4. Apply instructional design parameters consistently throughout content
+5. Make content immediately actionable for ${audienceContext}
+6. Use current examples and statistics where available
+7. Maintain professional tone while being engaging and practical
+8. Ensure domain approach influences example selection and technical depth
+9. Calibrate language complexity based on audience level specified in parameters
+10. Structure content delivery according to the content focus priority
 
 Generate the complete HTML lesson content now.`;
 
@@ -451,6 +464,7 @@ Generate the complete HTML lesson content now.`;
 /**
  * Main function: Two-Stage RAG Content Generation
  * Orchestrates the complete two-stage process with detailed token tracking
+ * ✅ ENHANCED: Now supports design parameters for instructional tuning
  */
 export const generateTwoStageRAGContent = async (
   apiKey,
@@ -462,6 +476,7 @@ export const generateTwoStageRAGContent = async (
   designConsiderations = '',
   webSearchContext = '',
   audienceContext = 'Procure to pay professionals',
+  designParameters = {}, // ✅ NEW: Design parameters parameter
   abortSignal = null
 ) => {
   // Initialize token tracking session
@@ -472,7 +487,8 @@ export const generateTwoStageRAGContent = async (
     console.log(`📊 Configuration:`, {
       hasVectorStores: !!(vectorStoreIds && vectorStoreIds.length > 0),
       hasWebSearch: !!webSearchContext,
-      hasCourseContext: !!courseContext
+      hasCourseContext: !!courseContext,
+      hasDesignParameters: Object.keys(designParameters).length > 0
     });
 
     let stage1Content = '';
@@ -528,6 +544,7 @@ export const generateTwoStageRAGContent = async (
       mustHaveAspects,
       designConsiderations,
       audienceContext,
+      designParameters, // ✅ NEW: Pass design parameters
       tokenSession,
       abortSignal
     );
@@ -555,6 +572,7 @@ export const generateTwoStageRAGContent = async (
       metadata: {
         usedRAG: !!(vectorStoreIds && vectorStoreIds.length > 0 && stage1Content),
         usedWebSearch: !!webSearchContext,
+        usedDesignParameters: Object.keys(designParameters).length > 0,
         stage1TokenUsage: {
           prompt_tokens: tokenSession.stage1.prompt_tokens,
           completion_tokens: tokenSession.stage1.completion_tokens,
@@ -589,6 +607,7 @@ export const generateTwoStageRAGContent = async (
 /**
  * Fallback function for when RAG is not available
  * Uses only web search and course context with token tracking
+ * ✅ ENHANCED: Now supports design parameters
  */
 export const generateFallbackContent = async (
   apiKey,
@@ -599,6 +618,7 @@ export const generateFallbackContent = async (
   designConsiderations = '',
   webSearchContext = '',
   audienceContext = 'Procure to pay professionals',
+  designParameters = {}, // ✅ NEW: Design parameters parameter
   abortSignal = null
 ) => {
   console.log(`🔄 Using fallback content generation (no RAG available)`);
@@ -623,6 +643,7 @@ export const generateFallbackContent = async (
     mustHaveAspects,
     designConsiderations,
     audienceContext,
+    designParameters, // ✅ NEW: Pass design parameters
     tokenSession,
     abortSignal
   );

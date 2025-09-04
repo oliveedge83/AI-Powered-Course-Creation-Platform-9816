@@ -2,91 +2,102 @@ import axios from 'axios';
 import {supabase} from '../lib/supabase';
 import {callPerplexityAPI} from './perplexityService';
 import {generateTwoStageRAGContent,generateFallbackContent} from './enhancedRagService';
+import {createLMSService} from './lms/lmsServiceFactory';
+import {LMS_TYPES} from './lms/lmsTypes';
+import {getEffectiveDesignParameters} from './instructionalParameterService';
+// ✅ NEW: Import AITable service
+import {
+validateAITableCredentials,
+postCourseToAITable,
+generateLessonSlidesJson,
+generateTopicLessonStructure,
+generateCourseUniqueId
+} from './aitableService';
 
 // Create API logs table for monitoring
 const createApiLogsTable=async ()=> {
-  try {
-    const {data,error}=await supabase
-      .from('api_logs_74621')
-      .select('*')
-      .limit(1);
+try {
+const {data,error}=await supabase
+.from('api_logs_74621')
+.select('*')
+.limit(1);
 
-    if (error) {
-      console.log('Creating API logs table');
-      try {
-        await supabase.rpc('create_api_logs_table',{table_name: 'api_logs_74621'});
-      } catch (rpcError) {
-        console.error('Failed to create API logs table:',rpcError);
-        await supabase.from('api_logs_74621').insert({
-          operation: 'table_creation',
-          request_id: 'initial_setup',
-          request_data: {message: 'Initial table setup'}
-        });
-      }
-    } else {
-      console.log('API logs table exists');
-    }
+if (error) {
+console.log('Creating API logs table');
+try {
+await supabase.rpc('create_api_logs_table',{table_name: 'api_logs_74621'});
+} catch (rpcError) {
+console.error('Failed to create API logs table:',rpcError);
+await supabase.from('api_logs_74621').insert({
+operation: 'table_creation',
+request_id: 'initial_setup',
+request_data: {message: 'Initial table setup'}
+});
+}
+} else {
+console.log('API logs table exists');
+}
 
-    try {
-      const {error: tokenError}=await supabase
-        .from('token_usage_74621')
-        .select('*')
-        .limit(1);
+try {
+const {error: tokenError}=await supabase
+.from('token_usage_74621')
+.select('*')
+.limit(1);
 
-      if (tokenError) {
-        console.log('Creating token usage table');
-        try {
-          await supabase.rpc('create_token_usage_table',{table_name: 'token_usage_74621'});
-        } catch (rpcError) {
-          console.error('Failed to create token usage table:',rpcError);
-          await supabase.from('token_usage_74621').insert({
-            model: 'initial_setup',
-            prompt_tokens: 0,
-            completion_tokens: 0,
-            total_tokens: 0,
-            operation_type: 'table_creation',
-            request_id: 'initial_setup',
-            duration_seconds: 0,
-            is_estimate: true
-          });
-        }
-      } else {
-        console.log('Token usage table exists');
-      }
-    } catch (error) {
-      console.error('Error checking token usage table:',error);
-    }
-  } catch (error) {
-    console.error('Failed to check/create API logs table:',error);
-  }
+if (tokenError) {
+console.log('Creating token usage table');
+try {
+await supabase.rpc('create_token_usage_table',{table_name: 'token_usage_74621'});
+} catch (rpcError) {
+console.error('Failed to create token usage table:',rpcError);
+await supabase.from('token_usage_74621').insert({
+model: 'initial_setup',
+prompt_tokens: 0,
+completion_tokens: 0,
+total_tokens: 0,
+operation_type: 'table_creation',
+request_id: 'initial_setup',
+duration_seconds: 0,
+is_estimate: true
+});
+}
+} else {
+console.log('Token usage table exists');
+}
+} catch (error) {
+console.error('Error checking token usage table:',error);
+}
+} catch (error) {
+console.error('Failed to check/create API logs table:',error);
+}
 };
 
 // Create recovery state table for resumable operations
 const createRecoveryStateTable=async ()=> {
-  try {
-    const {data,error}=await supabase
-      .from('recovery_state_74621')
-      .select('*')
-      .limit(1);
+try {
+const {data,error}=await supabase
+.from('recovery_state_74621')
+.select('*')
+.limit(1);
 
-    if (error) {
-      console.log('Creating recovery state table');
-      try {
-        await supabase.rpc('create_recovery_state',{table_name: 'recovery_state_74621'});
-      } catch (rpcError) {
-        console.error('Failed to create recovery state table:',rpcError);
-        await supabase.from('recovery_state_74621').insert({
-          course_id: 'initial_setup',
-          state_data: {message: 'Initial table setup'},
-          updated_at: new Date().toISOString()
-        });
-      }
-    } else {
-      console.log('Recovery state table exists');
-    }
-  } catch (error) {
-    console.error('Failed to check/create recovery state table:',error);
-  }
+if (error) {
+console.log('Creating recovery state table');
+try {
+await supabase.rpc('create_recovery_state',{table_name: 'recovery_state_74621'});
+} catch (rpcError) {
+console.error('Failed to create recovery state table:',rpcError);
+await supabase.from('recovery_state_74621').insert({
+course_id: 'initial_setup',
+state_data: {message: 'Initial table setup'},
+updated_at: new Date().toISOString()
+});
+}
+} else {
+console.log('Recovery state table exists');
+}
+} catch (error) {
+console.error('Failed to check/create recovery state table:',error);
+}
 };
 
 // Initialize the tables
@@ -95,135 +106,134 @@ createRecoveryStateTable();
 
 // Save recovery state for resumable operations
 const saveRecoveryState=async (courseId,state)=> {
-  try {
-    const {data,error}=await supabase
-      .from('recovery_state_74621')
-      .upsert(
-        {
-          course_id: courseId,
-          state_data: state,
-          updated_at: new Date().toISOString()
-        },
-        {onConflict: 'course_id'}
-      );
+try {
+const {data,error}=await supabase
+.from('recovery_state_74621')
+.upsert(
+{
+course_id: courseId,
+state_data: state,
+updated_at: new Date().toISOString()
+},
+{onConflict: 'course_id'}
+);
 
-    if (error) {
-      console.error('Error saving recovery state:',error);
-    }
-    return data;
-  } catch (err) {
-    console.error('Failed to save recovery state:',err);
-  }
+if (error) {
+console.error('Error saving recovery state:',error);
+}
+return data;
+} catch (err) {
+console.error('Failed to save recovery state:',err);
+}
 };
 
 // Load recovery state for resumable operations
 const loadRecoveryState=async (courseId)=> {
-  try {
-    const {data,error}=await supabase
-      .from('recovery_state_74621')
-      .select('state_data')
-      .eq('course_id',courseId)
-      .single();
+try {
+const {data,error}=await supabase
+.from('recovery_state_74621')
+.select('state_data')
+.eq('course_id',courseId)
+.single();
 
-    if (error) {
-      console.error('Error loading recovery state:',error);
-      return null;
-    }
-
-    return data?.state_data || null;
-  } catch (err) {
-    console.error('Failed to load recovery state:',err);
-    return null;
-  }
+if (error) {
+console.error('Error loading recovery state:',error);
+return null;
+}
+return data?.state_data || null;
+} catch (err) {
+console.error('Failed to load recovery state:',err);
+return null;
+}
 };
 
 // Clear recovery state after successful completion
 const clearRecoveryState=async (courseId)=> {
-  try {
-    const {error}=await supabase
-      .from('recovery_state_74621')
-      .delete()
-      .eq('course_id',courseId);
+try {
+const {error}=await supabase
+.from('recovery_state_74621')
+.delete()
+.eq('course_id',courseId);
 
-    if (error) {
-      console.error('Error clearing recovery state:',error);
-    }
-  } catch (err) {
-    console.error('Failed to clear recovery state:',err);
-  }
+if (error) {
+console.error('Error clearing recovery state:',error);
+}
+} catch (err) {
+console.error('Failed to clear recovery state:',err);
+}
 };
 
 // ✅ FIXED: Generate web search context using Perplexity Sonar with corrected configuration
 const generateWebSearchContext=async (perplexityApiKey,course,topic,lessons,sonarConfig=null)=> {
-  try {
-    console.log(`🔍 Generating web search context for topic: ${topic.topicTitle}`);
-    
-    const lessonContexts={};
-    
-    // ✅ CORRECTED: Updated default configuration with valid search_mode values
-    const defaultSonarConfig={
-      sonarModel: 'sonar',
-      searchMode: 'web', // ✅ FIXED: Changed from 'web_search' to 'web'
-      searchContextSize: 'medium',
-      searchRecency: 'month',
-      domainFilter: '',
-      temperature: 0.3,
-      maxTokens: 1400,
-      country: '',
-      region: '',
-      city: ''
-    };
+try {
+console.log(`🔍 Generating web search context for topic: ${topic.topicTitle}`);
 
-    const config=sonarConfig || defaultSonarConfig;
+const lessonContexts={};
 
-    // ✅ CORRECTED: Build Perplexity options with valid parameters
-    const buildPerplexityOptions=(maxTokens)=> {
-      const options={
-        model: config.sonarModel,
-        maxTokens: maxTokens,
-        temperature: config.temperature
-      };
+// ✅ CORRECTED: Updated default configuration with valid search_mode values
+const defaultSonarConfig={
+sonarModel: 'sonar',
+searchMode: 'web',// ✅ FIXED: Changed from 'web_search' to 'web'
+searchContextSize: 'medium',
+searchRecency: 'month',
+domainFilter: '',
+temperature: 0.3,
+maxTokens: 1400,
+country: '',
+region: '',
+city: ''
+};
 
-      // ✅ FIXED: Only add search parameters for sonar models with correct values
-      if (config.sonarModel.includes('sonar')) {
-        // ✅ CORRECTED: Use 'web' instead of 'web_search'
-        options.search_mode=config.searchMode === 'web_search' ? 'web' : config.searchMode;
-        
-        // ✅ FIXED: Simplified web search options structure
-        options.web_search_options={};
-        
-        // Add search context size if supported
-        if (config.searchContextSize && ['low','medium','high'].includes(config.searchContextSize)) {
-          options.web_search_options.search_context_size=config.searchContextSize;
-        }
-        
-        // Add recency filter if supported
-        if (config.searchRecency && ['day','week','month','year'].includes(config.searchRecency)) {
-          options.web_search_options.search_recency_filter=config.searchRecency;
-        }
+const config=sonarConfig || defaultSonarConfig;
 
-        // Add domain filter if provided and valid
-        if (config.domainFilter && config.domainFilter.trim()) {
-          const domains=config.domainFilter.split(',').map(d=> d.trim()).filter(d=> d);
-          if (domains.length > 0) {
-            options.web_search_options.search_domain_filter=domains;
-          }
-        }
+// ✅ CORRECTED: Build Perplexity options with valid parameters
+const buildPerplexityOptions=(maxTokens)=> {
+const options={
+model: config.sonarModel,
+maxTokens: maxTokens,
+temperature: config.temperature
+};
 
-        // Add user location if provided
-        if (config.country || config.region || config.city) {
-          options.user_location={};
-          if (config.country) options.user_location.country=config.country;
-          if (config.region) options.user_location.region=config.region;
-          if (config.city) options.user_location.city=config.city;
-        }
-      }
+// ✅ FIXED: Only add search parameters for sonar models with correct values
+if (config.sonarModel.includes('sonar')) {
+// ✅ CORRECTED: Use 'web' instead of 'web_search'
+options.search_mode=config.searchMode==='web_search' ? 'web' : config.searchMode;
 
-      return options;
-    };
+// ✅ FIXED: Simplified web search options structure
+options.web_search_options={};
 
-    // Generate topic-level web search context
-    const topicSearchPrompt=`
+// Add search context size if supported
+if (config.searchContextSize && ['low','medium','high'].includes(config.searchContextSize)) {
+options.web_search_options.search_context_size=config.searchContextSize;
+}
+
+// Add recency filter if supported
+if (config.searchRecency && ['day','week','month','year'].includes(config.searchRecency)) {
+options.web_search_options.search_recency_filter=config.searchRecency;
+}
+
+// Add domain filter if provided and valid
+if (config.domainFilter && config.domainFilter.trim()) {
+const domains=config.domainFilter.split(',').map(d=> d.trim()).filter(d=> d);
+if (domains.length > 0) {
+options.web_search_options.search_domain_filter=domains;
+}
+}
+
+// Add user location if provided
+if (config.country || config.region || config.city) {
+options.user_location={};
+if (config.country) options.user_location.country=config.country;
+if (config.region) options.user_location.region=config.region;
+if (config.city) options.user_location.city=config.city;
+}
+}
+
+return options;
+};
+
+// Generate topic-level web search context
+const topicSearchPrompt=`
 Search for the latest trends,statistics,and developments related to "${topic.topicTitle}" in the context of "${course.courseTitle}".
 
 Focus on:
@@ -234,23 +244,23 @@ Focus on:
 - Real-world case studies and examples
 
 Provide a comprehensive overview that can be used as context for educational content generation.
-    `;
+`;
 
-    console.log(`📡 Making topic-level Perplexity API call...`);
-    console.log(`🔧 Using search_mode: ${config.searchMode === 'web_search' ? 'web' : config.searchMode}`);
-    
-    const topicResult=await callPerplexityAPI(
-      perplexityApiKey,
-      topicSearchPrompt,
-      config.sonarModel,
-      buildPerplexityOptions(config.maxTokens)
-    );
+console.log(`📡 Making topic-level Perplexity API call...`);
+console.log(`🔧 Using search_mode: ${config.searchMode==='web_search' ? 'web' : config.searchMode}`);
 
-    console.log(`✅ Topic-level web search context generated: ${topicResult.content.length} characters`);
+const topicResult=await callPerplexityAPI(
+perplexityApiKey,
+topicSearchPrompt,
+config.sonarModel,
+buildPerplexityOptions(config.maxTokens)
+);
 
-    // Generate lesson-specific web search contexts
-    for (const lesson of lessons) {
-      const lessonSearchPrompt=`
+console.log(`✅ Topic-level web search context generated: ${topicResult.content.length} characters`);
+
+// Generate lesson-specific web search contexts
+for (const lesson of lessons) {
+const lessonSearchPrompt=`
 Search for specific,current information about "${lesson.lessonTitle}" in the context of "${topic.topicTitle}" and "${course.courseTitle}".
 
 Find:
@@ -262,140 +272,154 @@ Find:
 - Latest tools and technologies
 
 Provide focused,actionable information that can enhance lesson content with current,real-world context.
-      `;
+`;
 
-      try {
-        console.log(`📡 Making lesson-level Perplexity API call for: ${lesson.lessonTitle}`);
-        
-        const lessonResult=await callPerplexityAPI(
-          perplexityApiKey,
-          lessonSearchPrompt,
-          config.sonarModel,
-          buildPerplexityOptions(400) // Smaller token limit for individual lessons
-        );
+try {
+console.log(`📡 Making lesson-level Perplexity API call for: ${lesson.lessonTitle}`);
+const lessonResult=await callPerplexityAPI(
+perplexityApiKey,
+lessonSearchPrompt,
+config.sonarModel,
+buildPerplexityOptions(400) // Smaller token limit for individual lessons
+);
 
-        lessonContexts[`lesson_${lesson.id}_websearchcontext`]=lessonResult.content;
-        console.log(`✅ Lesson-level web search context generated for: ${lesson.lessonTitle} (${lessonResult.content.length} characters)`);
+lessonContexts[`lesson_${lesson.id}_websearchcontext`]=lessonResult.content;
+console.log(`✅ Lesson-level web search context generated for: ${lesson.lessonTitle} (${lessonResult.content.length} characters)`);
 
-        // Add delay to respect rate limits
-        await new Promise(resolve=> setTimeout(resolve,1000));
-      } catch (error) {
-        console.error(`❌ Error generating web search context for lesson ${lesson.lessonTitle}:`,error);
-        lessonContexts[`lesson_${lesson.id}_websearchcontext`]='';
-      }
-    }
+// Add delay to respect rate limits
+await new Promise(resolve=> setTimeout(resolve,1000));
+} catch (error) {
+console.error(`❌ Error generating web search context for lesson ${lesson.lessonTitle}:`,error);
+lessonContexts[`lesson_${lesson.id}_websearchcontext`]='';
+}
+}
 
-    console.log(`🎉 Web search context generation completed for topic: ${topic.topicTitle}`);
-    console.log(`📊 Generated contexts: Topic (${topicResult.content.length} chars) + ${Object.keys(lessonContexts).length} lessons`);
+console.log(`🎉 Web search context generation completed for topic: ${topic.topicTitle}`);
+console.log(`📊 Generated contexts: Topic (${topicResult.content.length} chars) + ${Object.keys(lessonContexts).length} lessons`);
 
-    return {
-      topicWebSearchContext: topicResult.content,
-      lessonWebSearchContexts: lessonContexts
-    };
-  } catch (error) {
-    console.error('❌ Error generating web search context:',error);
-    
-    // Provide more specific error information
-    if (error.response && error.response.data && error.response.data.error) {
-      console.error('🚨 Perplexity API Error Details:',error.response.data.error);
-    }
-    
-    return {
-      topicWebSearchContext: '',
-      lessonWebSearchContexts: {}
-    };
-  }
+return {
+topicWebSearchContext: topicResult.content,
+lessonWebSearchContexts: lessonContexts
 };
 
-// ✅ UPDATED: Generate reading content using Two-Stage RAG approach
+} catch (error) {
+console.error('❌ Error generating web search context:',error);
+// Provide more specific error information
+if (error.response && error.response.data && error.response.data.error) {
+console.error('🚨 Perplexity API Error Details:',error.response.data.error);
+}
+return {
+topicWebSearchContext: '',
+lessonWebSearchContexts: {}
+};
+}
+};
+
+// ✅ UPDATED: Generate reading content using Two-Stage RAG approach with design parameters
 const generateReadingContentWithTwoStageRAG=async (
-  apiKey,
-  vectorStoreIds,
-  lessonData,
-  topicData,
-  courseContext,
-  mustHaveAspects,
-  designConsiderations,
-  webSearchContext='',
-  audienceContext='',
-  abortSignal=null
+apiKey,
+vectorStoreIds,
+lessonData,
+topicData,
+courseContext,
+mustHaveAspects,
+designConsiderations,
+webSearchContext='',
+audienceContext='',
+designParameters={},// ✅ NEW: Design parameters
+abortSignal=null
 )=> {
-  try {
-    console.log(`🎯 Starting Two-Stage RAG reading content generation for lesson: ${lessonData.lessonTitle}`);
+try {
+console.log(`🎯 Starting Two-Stage RAG reading content generation for lesson: ${lessonData.lessonTitle}`);
+console.log(`⚙️ Using design parameters:`,designParameters);
 
-    // Use the new two-stage RAG service
-    const result=await generateTwoStageRAGContent(
-      apiKey,
-      vectorStoreIds,
-      lessonData,
-      topicData,
-      courseContext,
-      mustHaveAspects,
-      designConsiderations,
-      webSearchContext,
-      audienceContext || 'Procure to pay professionals',
-      abortSignal
-    );
+// Use the new two-stage RAG service with design parameters
+const result=await generateTwoStageRAGContent(
+apiKey,
+vectorStoreIds,
+lessonData,
+topicData,
+courseContext,
+mustHaveAspects,
+designConsiderations,
+webSearchContext,
+audienceContext || 'Procure to pay professionals',
+designParameters,// ✅ NEW: Pass design parameters
+abortSignal
+);
 
-    console.log(`✅ Two-Stage RAG reading content generated successfully`);
-    console.log(`📊 Metadata:`,result.metadata);
+console.log(`✅ Two-Stage RAG reading content generated successfully`);
+console.log(`📊 Metadata:`,result.metadata);
 
-    return result;
-  } catch (error) {
-    console.error('❌ Error in Two-Stage RAG reading content generation:',error);
-    
-    // Fallback to non-RAG generation
-    console.log('🔄 Falling back to standard content generation...');
-    try {
-      const fallbackResult=await generateFallbackContent(
-        apiKey,
-        lessonData,
-        topicData,
-        courseContext,
-        mustHaveAspects,
-        designConsiderations,
-        webSearchContext,
-        audienceContext || 'Procure to pay professionals',
-        abortSignal
-      );
+return result;
 
-      console.log(`✅ Fallback content generation completed`);
-      return {
-        ...fallbackResult,
-        metadata: {
-          usedRAG: false,
-          usedWebSearch: !!webSearchContext,
-          fallbackUsed: true,
-          contentLength: fallbackResult.content.length
-        }
-      };
-    } catch (fallbackError) {
-      console.error('❌ Fallback content generation also failed:',fallbackError);
-      throw fallbackError;
-    }
-  }
+} catch (error) {
+console.error('❌ Error in Two-Stage RAG reading content generation:',error);
+
+// Fallback to non-RAG generation
+console.log('🔄 Falling back to standard content generation...');
+try {
+const fallbackResult=await generateFallbackContent(
+apiKey,
+lessonData,
+topicData,
+courseContext,
+mustHaveAspects,
+designConsiderations,
+webSearchContext,
+audienceContext || 'Procure to pay professionals',
+designParameters,// ✅ NEW: Pass design parameters
+abortSignal
+);
+
+console.log(`✅ Fallback content generation completed`);
+return {
+...fallbackResult,
+metadata: {
+usedRAG: false,
+usedWebSearch: !!webSearchContext,
+usedDesignParameters: Object.keys(designParameters).length > 0,
+fallbackUsed: true,
+contentLength: fallbackResult.content.length
+}
+};
+
+} catch (fallbackError) {
+console.error('❌ Fallback content generation also failed:',fallbackError);
+throw fallbackError;
+}
+}
 };
 
 // ✅ UPDATED: Generate additional lesson sections with corrected token limits
 const generateAdditionalLessonSections=async (
-  apiKey,
-  lessonData,
-  readingContent,
-  webSearchContext='',
-  abortSignal=null
+apiKey,
+lessonData,
+readingContent,
+webSearchContext='',
+designParameters={},// ✅ NEW: Design parameters
+abortSignal=null
 )=> {
-  try {
-    console.log(`📝 Generating additional sections for lesson: ${lessonData.lessonTitle}`);
+try {
+console.log(`📝 Generating additional sections for lesson: ${lessonData.lessonTitle}`);
 
-    // Extract plain text from HTML for context
-    const plainTextContent=readingContent.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+// Extract plain text from HTML for context
+const plainTextContent=readingContent.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
 
-    const systemPrompt=`You are an expert educational content creator specializing in comprehensive lesson development. Based on the provided lesson content,generate additional educational sections in well-structured HTML format.
-    
-${webSearchContext ? `Recent Web Research Context: ${webSearchContext}` : ''}`;
+const systemPrompt=`You are an expert educational content creator specializing in comprehensive lesson development. Based on the provided lesson content,generate additional educational sections in well-structured HTML format.
 
-    // Generate FAQ section
-    const faqPrompt=`Based on the following lesson content,create a comprehensive FAQ section that addresses common questions students might have about this topic.
+${webSearchContext ? `Recent Web Research Context: ${webSearchContext}` : ''}
+
+Apply the following instructional approach based on design parameters:
+${Object.keys(designParameters).length > 0 ? `
+- Domain: ${designParameters.courseDomain || 'business-management'}
+- Audience Level: ${designParameters.targetAudienceLevel || 'intermediate'}
+- Tone & Style: ${designParameters.courseToneStyle || 'professional-business'}
+- Content Focus: ${designParameters.contentFocus || 'practical-application'}
+` : 'Use professional business approach for intermediate audience with practical focus.'}`;
+
+// Generate FAQ section
+const faqPrompt=`Based on the following lesson content,create a comprehensive FAQ section that addresses common questions students might have about this topic.
 
 Lesson Title: ${lessonData.lessonTitle}
 Lesson Description: ${lessonData.lessonDescription}
@@ -405,39 +429,39 @@ Create 6-8 frequently asked questions with detailed,helpful answers.
 
 IMPORTANT: Format your response in clean HTML with the following structure:
 <div class="faq-container">
-  <div class="faq-item">
-    <h3 class="faq-question">Question 1?</h3>
-    <div class="faq-answer">
-      <p>Detailed answer with proper HTML formatting...</p>
-    </div>
-  </div>
-  <!-- More FAQ items -->
+<div class="faq-item">
+<h3 class="faq-question">Question 1?</h3>
+<div class="faq-answer">
+<p>Detailed answer with proper HTML formatting...</p>
+</div>
+</div>
+<!-- More FAQ items -->
 </div>
 
 Use proper HTML tags like <p>,<ul>,<li>,<strong>,<em> for formatting. Make the answers informative and practical.`;
 
-    const faqResponse=await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: "gpt-4.1-mini-2025-04-14",
-        messages: [
-          {role: "system",content: systemPrompt},
-          {role: "user",content: faqPrompt}
-        ],
-        max_tokens: 800, // ✅ REDUCED from 1500 to 800
-        temperature: 0.7
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        signal: abortSignal
-      }
-    );
+const faqResponse=await axios.post(
+'https://api.openai.com/v1/chat/completions',
+{
+model: "gpt-4.1-mini-2025-04-14",
+messages: [
+{role: "system",content: systemPrompt},
+{role: "user",content: faqPrompt}
+],
+max_tokens: 800,// ✅ REDUCED from 1500 to 800
+temperature: 0.7
+},
+{
+headers: {
+'Authorization': `Bearer ${apiKey}`,
+'Content-Type': 'application/json'
+},
+signal: abortSignal
+}
+);
 
-    // Generate Latest Developments section
-    const latestDevelopmentsPrompt=`Based on the lesson "${lessonData.lessonTitle}" and the web search context,create a "Latest Developments" section highlighting recent trends,innovations,and industry updates.
+// Generate Latest Developments section
+const latestDevelopmentsPrompt=`Based on the lesson "${lessonData.lessonTitle}" and the web search context,create a "Latest Developments" section highlighting recent trends,innovations,and industry updates.
 
 ${webSearchContext ? `Use this recent web research context: ${webSearchContext}` : ''}
 
@@ -450,36 +474,36 @@ Create content about:
 
 Format in clean HTML with proper structure:
 <div class="latest-developments">
-  <h3>Recent Industry Developments</h3>
-  <div class="development-item">
-    <h4>Development Title</h4>
-    <p>Description and impact...</p>
-  </div>
-  <!-- More development items -->
+<h3>Recent Industry Developments</h3>
+<div class="development-item">
+<h4>Development Title</h4>
+<p>Description and impact...</p>
+</div>
+<!-- More development items -->
 </div>`;
 
-    const latestDevelopmentsResponse=await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: "gpt-4.1-mini-2025-04-14",
-        messages: [
-          {role: "system",content: systemPrompt},
-          {role: "user",content: latestDevelopmentsPrompt}
-        ],
-        max_tokens: 700, // ✅ REDUCED from 1200 to 700
-        temperature: 0.7
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        signal: abortSignal
-      }
-    );
+const latestDevelopmentsResponse=await axios.post(
+'https://api.openai.com/v1/chat/completions',
+{
+model: "gpt-4.1-mini-2025-04-14",
+messages: [
+{role: "system",content: systemPrompt},
+{role: "user",content: latestDevelopmentsPrompt}
+],
+max_tokens: 700,// ✅ REDUCED from 1200 to 700
+temperature: 0.7
+},
+{
+headers: {
+'Authorization': `Bearer ${apiKey}`,
+'Content-Type': 'application/json'
+},
+signal: abortSignal
+}
+);
 
-    // Generate Additional Reading References
-    const additionalReadingPrompt=`Based on the lesson "${lessonData.lessonTitle}",create a comprehensive additional reading and resources section.
+// Generate Additional Reading References
+const additionalReadingPrompt=`Based on the lesson "${lessonData.lessonTitle}",create a comprehensive additional reading and resources section.
 
 Include:
 1. Recommended books and publications
@@ -491,37 +515,37 @@ Include:
 
 Format in clean HTML:
 <div class="additional-resources">
-  <div class="resource-category">
-    <h4>Books & Publications</h4>
-    <ul>
-      <li><strong>Title</strong> by Author - Brief description</li>
-    </ul>
-  </div>
-  <!-- More categories -->
+<div class="resource-category">
+<h4>Books & Publications</h4>
+<ul>
+<li><strong>Title</strong> by Author - Brief description</li>
+</ul>
+</div>
+<!-- More categories -->
 </div>`;
 
-    const additionalReadingResponse=await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: "gpt-4.1-mini-2025-04-14",
-        messages: [
-          {role: "system",content: systemPrompt},
-          {role: "user",content: additionalReadingPrompt}
-        ],
-        max_tokens: 500, // ✅ TOTAL FOR FAQ+LATEST+ADDITIONAL=800+700+500=2000 (within 1500 limit requested)
-        temperature: 0.7
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        signal: abortSignal
-      }
-    );
+const additionalReadingResponse=await axios.post(
+'https://api.openai.com/v1/chat/completions',
+{
+model: "gpt-4.1-mini-2025-04-14",
+messages: [
+{role: "system",content: systemPrompt},
+{role: "user",content: additionalReadingPrompt}
+],
+max_tokens: 500,// ✅ TOTAL FOR FAQ+LATEST+ADDITIONAL=800+700+500=2000 (within 1500 limit requested)
+temperature: 0.7
+},
+{
+headers: {
+'Authorization': `Bearer ${apiKey}`,
+'Content-Type': 'application/json'
+},
+signal: abortSignal
+}
+);
 
-    // Generate Presentation Slides
-    const slidesPrompt=`Based on the lesson content,create compelling presentation slides with titles and 4-6 bullet points per slide.
+// Generate Presentation Slides
+const slidesPrompt=`Based on the lesson content,create compelling presentation slides with titles and 4-6 bullet points per slide.
 
 Create 8-12 slides that cover the main concepts from: ${lessonData.lessonTitle}
 
@@ -540,29 +564,29 @@ SLIDE 2: [Title]
 
 Continue for all slides. Make them engaging and visually representable.`;
 
-    const slidesResponse=await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: "gpt-4.1-mini-2025-04-14",
-        messages: [
-          {role: "system",content: "You are an expert presentation designer specializing in educational content."},
-          {role: "user",content: slidesPrompt}
-        ],
-        max_tokens: 800, // ✅ REDUCED from 1500 to 800 for slides only
-        temperature: 0.7
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        signal: abortSignal
-      }
-    );
+const slidesResponse=await axios.post(
+'https://api.openai.com/v1/chat/completions',
+{
+model: "gpt-4.1-mini-2025-04-14",
+messages: [
+{role: "system",content: "You are an expert presentation designer specializing in educational content."},
+{role: "user",content: slidesPrompt}
+],
+max_tokens: 800,// ✅ REDUCED from 1500 to 800 for slides only
+temperature: 0.7
+},
+{
+headers: {
+'Authorization': `Bearer ${apiKey}`,
+'Content-Type': 'application/json'
+},
+signal: abortSignal
+}
+);
 
-    // Generate Voice-over Script with Timestamps
-    const slideContent=slidesResponse.data.choices[0].message.content;
-    const voiceOverPrompt=`Based on the following presentation slides,write a detailed voice-over script for a video lesson with timestamps.
+// Generate Voice-over Script with Timestamps
+const slideContent=slidesResponse.data.choices[0].message.content;
+const voiceOverPrompt=`Based on the following presentation slides,write a detailed voice-over script for a video lesson with timestamps.
 
 Presentation Slides:
 ${slideContent}
@@ -573,667 +597,279 @@ Format the voice-over script with timing indicators for each slide:
 
 Make it conversational,engaging,and educational. Each slide should have 30-60 seconds of narration.`;
 
-    const voiceOverResponse=await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: "gpt-4.1-mini-2025-04-14",
-        messages: [
-          {role: "system",content: "You are an expert educational video scriptwriter specializing in engaging,conversational narration."},
-          {role: "user",content: voiceOverPrompt}
-        ],
-        max_tokens: 700, // ✅ SLIDES + VOICE-OVER=800 + 700=1500 (exactly as requested)
-        temperature: 0.7
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        signal: abortSignal
-      }
-    );
+const voiceOverResponse=await axios.post(
+'https://api.openai.com/v1/chat/completions',
+{
+model: "gpt-4.1-mini-2025-04-14",
+messages: [
+{role: "system",content: "You are an expert educational video scriptwriter specializing in engaging,conversational narration."},
+{role: "user",content: voiceOverPrompt}
+],
+max_tokens: 700,// ✅ SLIDES + VOICE-OVER=800 + 700=1500 (exactly as requested)
+temperature: 0.7
+},
+{
+headers: {
+'Authorization': `Bearer ${apiKey}`,
+'Content-Type': 'application/json'
+},
+signal: abortSignal
+}
+);
 
-    console.log(`✅ Additional lesson sections generated successfully`);
+console.log(`✅ Additional lesson sections generated successfully`);
 
-    return {
-      faq: faqResponse.data.choices[0].message.content,
-      latestDevelopments: latestDevelopmentsResponse.data.choices[0].message.content,
-      additionalReading: additionalReadingResponse.data.choices[0].message.content,
-      slides: slideContent,
-      voiceOver: voiceOverResponse.data.choices[0].message.content,
-      tokenUsage: {
-        prompt_tokens: (faqResponse.data.usage?.prompt_tokens || 0) + 
-                       (latestDevelopmentsResponse.data.usage?.prompt_tokens || 0) + 
-                       (additionalReadingResponse.data.usage?.prompt_tokens || 0) + 
-                       (slidesResponse.data.usage?.prompt_tokens || 0) + 
-                       (voiceOverResponse.data.usage?.prompt_tokens || 0),
-        completion_tokens: (faqResponse.data.usage?.completion_tokens || 0) + 
-                           (latestDevelopmentsResponse.data.usage?.completion_tokens || 0) + 
-                           (additionalReadingResponse.data.usage?.completion_tokens || 0) + 
-                           (slidesResponse.data.usage?.completion_tokens || 0) + 
-                           (voiceOverResponse.data.usage?.completion_tokens || 0),
-        total_tokens: (faqResponse.data.usage?.total_tokens || 0) + 
-                      (latestDevelopmentsResponse.data.usage?.total_tokens || 0) + 
-                      (additionalReadingResponse.data.usage?.total_tokens || 0) + 
-                      (slidesResponse.data.usage?.total_tokens || 0) + 
-                      (voiceOverResponse.data.usage?.total_tokens || 0)
-      }
-    };
-  } catch (error) {
-    console.error('❌ Error generating additional lesson sections:',error);
-    throw error;
-  }
+return {
+faq: faqResponse.data.choices[0].message.content,
+latestDevelopments: latestDevelopmentsResponse.data.choices[0].message.content,
+additionalReading: additionalReadingResponse.data.choices[0].message.content,
+slides: slideContent,
+voiceOver: voiceOverResponse.data.choices[0].message.content,
+tokenUsage: {
+prompt_tokens: (faqResponse.data.usage?.prompt_tokens || 0) +
+(latestDevelopmentsResponse.data.usage?.prompt_tokens || 0) +
+(additionalReadingResponse.data.usage?.prompt_tokens || 0) +
+(slidesResponse.data.usage?.prompt_tokens || 0) +
+(voiceOverResponse.data.usage?.prompt_tokens || 0),
+completion_tokens: (faqResponse.data.usage?.completion_tokens || 0) +
+(latestDevelopmentsResponse.data.usage?.completion_tokens || 0) +
+(additionalReadingResponse.data.usage?.completion_tokens || 0) +
+(slidesResponse.data.usage?.completion_tokens || 0) +
+(voiceOverResponse.data.usage?.completion_tokens || 0),
+total_tokens: (faqResponse.data.usage?.total_tokens || 0) +
+(latestDevelopmentsResponse.data.usage?.total_tokens || 0) +
+(additionalReadingResponse.data.usage?.total_tokens || 0) +
+(slidesResponse.data.usage?.total_tokens || 0) +
+(voiceOverResponse.data.usage?.total_tokens || 0)
+}
+};
+
+} catch (error) {
+console.error('❌ Error generating additional lesson sections:',error);
+throw error;
+}
 };
 
 // Enhanced OpenAI API call function with logging,retry logic,and rate limit handling
 const callOpenAI=async (apiKey,prompt,systemPrompt,useGPT4=false,retries=3,abortSignal=null)=> {
-  let lastError;
-  let tokenUsage=null;
-  const startTime=new Date();
-  const modelName=useGPT4 ? "gpt-4o" : "gpt-4.1-mini-2025-04-14";
-  const requestId=`req_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+let lastError;
+let tokenUsage=null;
+const startTime=new Date();
+const modelName=useGPT4 ? "gpt-4o" : "gpt-4.1-mini-2025-04-14";
+const requestId=`req_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
 
-  try {
-    await supabase.from('api_logs_74621').insert([{
-      operation: 'openai_api_call',
-      request_id: requestId,
-      request_data: {
-        model: modelName,
-        prompt_length: prompt.length,
-        system_prompt: systemPrompt,
-        timestamp: new Date().toISOString()
-      }
-    }]);
-  } catch (logError) {
-    console.error("Failed to log API call:",logError);
-  }
+try {
+await supabase.from('api_logs_74621').insert([{
+operation: 'openai_api_call',
+request_id: requestId,
+request_data: {
+model: modelName,
+prompt_length: prompt.length,
+system_prompt: systemPrompt,
+timestamp: new Date().toISOString()
+}
+}]);
+} catch (logError) {
+console.error("Failed to log API call:",logError);
+}
 
-  for (let attempt=1;attempt <=retries + 1;attempt++) {
-    try {
-      console.log(`API call attempt ${attempt}/${retries + 1} using model: ${modelName}`);
-      console.log(`Prompt length: ${prompt.length} characters`);
+for (let attempt=1;attempt <=retries + 1;attempt++) {
+try {
+console.log(`API call attempt ${attempt}/${retries + 1} using model: ${modelName}`);
+console.log(`Prompt length: ${prompt.length} characters`);
 
-      const baseTimeout=60000;
-      const charPerSec=1000;
-      const estimatedTime=Math.min(180000,Math.max(baseTimeout,prompt.length / charPerSec * 1000));
-      const callStartTime=new Date();
+const baseTimeout=60000;
+const charPerSec=1000;
+const estimatedTime=Math.min(180000,Math.max(baseTimeout,prompt.length / charPerSec * 1000));
 
-      const response=await axios.post(
-        'https://api.openai.com/v1/chat/completions',
-        {
-          model: modelName,
-          messages: [
-            {role: "system",content: systemPrompt},
-            {role: "user",content: prompt}
-          ],
-          temperature: 0.7
-        },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
-          },
-          timeout: estimatedTime,
-          signal: abortSignal
-        }
-      );
+const callStartTime=new Date();
+const response=await axios.post(
+'https://api.openai.com/v1/chat/completions',
+{
+model: modelName,
+messages: [
+{role: "system",content: systemPrompt},
+{role: "user",content: prompt}
+],
+temperature: 0.7
+},
+{
+headers: {
+'Content-Type': 'application/json',
+'Authorization': `Bearer ${apiKey}`
+},
+timeout: estimatedTime,
+signal: abortSignal
+}
+);
 
-      const endTime=new Date();
-      const duration=(endTime - callStartTime) / 1000;
-      const totalDuration=(endTime - startTime) / 1000;
+const endTime=new Date();
+const duration=(endTime - callStartTime) / 1000;
+const totalDuration=(endTime - startTime) / 1000;
 
-      console.log(`API call completed in ${duration} seconds (total with retries: ${totalDuration}s)`);
+console.log(`API call completed in ${duration} seconds (total with retries: ${totalDuration}s)`);
 
-      tokenUsage={
-        prompt_tokens: response.data.usage?.prompt_tokens || 0,
-        completion_tokens: response.data.usage?.completion_tokens || 0,
-        total_tokens: response.data.usage?.total_tokens || 0
-      };
-
-      try {
-        await supabase.from('api_logs_74621').insert([{
-          operation: 'openai_api_success',
-          request_id: requestId,
-          request_data: {
-            model: modelName,
-            duration_seconds: duration,
-            total_duration_seconds: totalDuration,
-            attempts: attempt
-          },
-          response_data: {
-            completion_tokens: tokenUsage.completion_tokens,
-            prompt_tokens: tokenUsage.prompt_tokens,
-            total_tokens: tokenUsage.total_tokens
-          }
-        }]);
-
-        await supabase.from('token_usage_74621').insert([{
-          model: modelName,
-          prompt_tokens: tokenUsage.prompt_tokens,
-          completion_tokens: tokenUsage.completion_tokens,
-          total_tokens: tokenUsage.total_tokens,
-          operation_type: 'content_generation',
-          request_id: requestId,
-          duration_seconds: duration
-        }]);
-      } catch (logError) {
-        console.error("Failed to log API success:",logError);
-      }
-
-      return {
-        content: response.data.choices[0].message.content,
-        tokenUsage
-      };
-    } catch (error) {
-      if (error.name==='AbortError' || error.code==='ECONNABORTED') {
-        console.log('Request aborted by user or timed out');
-        throw new Error('Request aborted by user or timed out');
-      }
-
-      lastError=error;
-      console.error(`Attempt ${attempt} failed:`,error.message);
-
-      let retryDelay=Math.pow(2,attempt) * 1000;
-
-      if (error.response?.status===429) {
-        console.log('Rate limit reached');
-        const retryAfter=error.response.headers['retry-after'];
-        if (retryAfter) {
-          const retrySeconds=parseInt(retryAfter,10);
-          if (!isNaN(retrySeconds)) {
-            retryDelay=(retrySeconds + 1) * 1000;
-          } else {
-            retryDelay=60000;
-          }
-        } else {
-          retryDelay=30000;
-        }
-        console.log(`Rate limited. Waiting ${retryDelay/1000} seconds before retry...`);
-      }
-
-      try {
-        await supabase.from('api_logs_74621').insert([{
-          operation: 'openai_api_error',
-          request_id: requestId,
-          error: error.message,
-          request_data: {
-            model: modelName,
-            attempt: attempt,
-            retry_delay: retryDelay / 1000
-          },
-          response_data: error.response ? {
-            status: error.response.status,
-            statusText: error.response.statusText,
-            headers: error.response.headers,
-            data: error.response.data
-          } : null
-        }]);
-      } catch (logError) {
-        console.error("Failed to log API error:",logError);
-      }
-
-      if (attempt <=retries) {
-        console.log(`Retrying in ${retryDelay/1000} seconds...`);
-        await new Promise(resolve=> setTimeout(resolve,retryDelay));
-      }
-    }
-  }
-
-  throw lastError;
+tokenUsage={
+prompt_tokens: response.data.usage?.prompt_tokens || 0,
+completion_tokens: response.data.usage?.completion_tokens || 0,
+total_tokens: response.data.usage?.total_tokens || 0
 };
 
-// LMS integration functions
-const createCourse=async (course,credentials,abortSignal=null)=> {
-  const auth=btoa(`${credentials.username}:${credentials.password}`);
+try {
+await supabase.from('api_logs_74621').insert([{
+operation: 'openai_api_success',
+request_id: requestId,
+request_data: {
+model: modelName,
+duration_seconds: duration,
+total_duration_seconds: totalDuration,
+attempts: attempt
+},
+response_data: {
+completion_tokens: tokenUsage.completion_tokens,
+prompt_tokens: tokenUsage.prompt_tokens,
+total_tokens: tokenUsage.total_tokens
+}
+}]);
 
-  return axios.post(
-    `${credentials.baseUrl}/wp-json/tutor/v1/courses`,
-    {
-      post_author: 1,
-      post_date: new Date().toISOString().slice(0,19).replace('T',' '),
-      post_date_gmt: new Date().toISOString().slice(0,19).replace('T',' '),
-      post_content: course.courseDescription,
-      post_title: course.courseTitle,
-      post_excerpt: course.courseDescription.substring(0,100),
-      post_status: "publish",
-      comment_status: "open",
-      post_password: "",
-      post_modified: new Date().toISOString().slice(0,19).replace('T',' '),
-      post_modified_gmt: new Date().toISOString().slice(0,19).replace('T',' '),
-      post_content_filtered: "",
-      additional_content: {
-        course_benefits: "Comprehensive learning experience",
-        course_target_audience: "Professionals and students",
-        course_duration: {
-          hours: "10",
-          minutes: "30"
-        },
-        course_material_includes: "Video lectures,reading materials,assignments",
-        course_requirements: "Basic understanding of the subject"
-      },
-      video: {
-        source_type: "youtube",
-        source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-      },
-      course_level: "beginner",
-      course_categories: [161,163],
-      course_tags: [18,19],
-      thumbnail_id: 0
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${auth}`
-      },
-      signal: abortSignal
-    }
-  );
+await supabase.from('token_usage_74621').insert([{
+model: modelName,
+prompt_tokens: tokenUsage.prompt_tokens,
+completion_tokens: tokenUsage.completion_tokens,
+total_tokens: tokenUsage.total_tokens,
+operation_type: 'content_generation',
+request_id: requestId,
+duration_seconds: duration
+}]);
+} catch (logError) {
+console.error("Failed to log API success:",logError);
+}
+
+return {
+content: response.data.choices[0].message.content,
+tokenUsage
 };
 
-const createTopic=async (topic,courseId,credentials,abortSignal=null)=> {
-  const auth=btoa(`${credentials.username}:${credentials.password}`);
+} catch (error) {
+if (error.name==='AbortError' || error.code==='ECONNABORTED') {
+console.log('Request aborted by user or timed out');
+throw new Error('Request aborted by user or timed out');
+}
 
-  return axios.post(
-    `${credentials.baseUrl}/wp-json/tutor/v1/topics`,
-    {
-      topic_course_id: courseId,
-      topic_title: topic.topicTitle,
-      topic_summary: topic.topicLearningObjectiveDescription,
-      topic_author: 1
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${auth}`
-      },
-      signal: abortSignal
-    }
-  );
-};
+lastError=error;
+console.error(`Attempt ${attempt} failed:`,error.message);
 
-const createLesson=async (lesson,topicId,credentials,fullContent=null,abortSignal=null)=> {
-  const auth=btoa(`${credentials.username}:${credentials.password}`);
+let retryDelay=Math.pow(2,attempt) * 1000;
 
-  let lessonContent=lesson.lessonDescription;
+if (error.response?.status===429) {
+console.log('Rate limit reached');
+const retryAfter=error.response.headers['retry-after'];
+if (retryAfter) {
+const retrySeconds=parseInt(retryAfter,10);
+if (!isNaN(retrySeconds)) {
+retryDelay=(retrySeconds + 1) * 1000;
+} else {
+retryDelay=60000;
+}
+} else {
+retryDelay=30000;
+}
+console.log(`Rate limited. Waiting ${retryDelay / 1000} seconds before retry...`);
+}
 
-  if (fullContent) {
-    // ✅ NEW: Enhanced lesson content structure with all sections
-    lessonContent=`
-      <div class="tutor-lesson-content">
-        <!-- Main Reading Content -->
-        <div class="lesson-main-content">
-          ${fullContent.readingContent}
-        </div>
+try {
+await supabase.from('api_logs_74621').insert([{
+operation: 'openai_api_error',
+request_id: requestId,
+error: error.message,
+request_data: {
+model: modelName,
+attempt: attempt,
+retry_delay: retryDelay / 1000
+},
+response_data: error.response ? {
+status: error.response.status,
+statusText: error.response.statusText,
+headers: error.response.headers,
+data: error.response.data
+} : null
+}]);
+} catch (logError) {
+console.error("Failed to log API error:",logError);
+}
 
-        <!-- FAQ Section -->
-        ${fullContent.faq ? `
-          <div class="lesson-faq-section">
-            <hr style="margin: 30px 0;border: none;height: 2px;background: linear-gradient(90deg,#3b82f6,#8b5cf6);">
-            <h2 style="color: #1e40af;font-size: 24px;margin-bottom: 20px;padding-bottom: 10px;border-bottom: 2px solid #e5e7eb;">
-              <i class="fas fa-question-circle" style="margin-right: 10px;"></i>Frequently Asked Questions
-            </h2>
-            <div class="faq-content">
-              ${fullContent.faq}
-            </div>
-          </div>
-        ` : ''}
+if (attempt <=retries) {
+console.log(`Retrying in ${retryDelay / 1000} seconds...`);
+await new Promise(resolve=> setTimeout(resolve,retryDelay));
+}
+}
+}
 
-        <!-- Latest Developments Section -->
-        ${fullContent.latestDevelopments ? `
-          <div class="lesson-latest-developments">
-            <hr style="margin: 30px 0;border: none;height: 2px;background: linear-gradient(90deg,#f59e0b,#ef4444);">
-            <h2 style="color: #dc2626;font-size: 24px;margin-bottom: 20px;padding-bottom: 10px;border-bottom: 2px solid #e5e7eb;">
-              <i class="fas fa-rocket" style="margin-right: 10px;"></i>Latest Developments & Trends
-            </h2>
-            <div class="latest-developments-content">
-              ${fullContent.latestDevelopments}
-            </div>
-          </div>
-        ` : ''}
-
-        <!-- Additional Reading Materials -->
-        ${fullContent.additionalReading ? `
-          <div class="lesson-additional-reading">
-            <hr style="margin: 30px 0;border: none;height: 2px;background: linear-gradient(90deg,#10b981,#059669);">
-            <h2 style="color: #047857;font-size: 24px;margin-bottom: 20px;padding-bottom: 10px;border-bottom: 2px solid #e5e7eb;">
-              <i class="fas fa-book-open" style="margin-right: 10px;"></i>Additional Reading & Resources
-            </h2>
-            <div class="additional-reading-content">
-              ${fullContent.additionalReading}
-            </div>
-          </div>
-        ` : ''}
-
-        <!-- Presentation Slides -->
-        <div class="lesson-slides-section">
-          <hr style="margin: 30px 0;border: none;height: 2px;background: linear-gradient(90deg,#f59e0b,#d97706);">
-          <h2 style="color: #92400e;font-size: 24px;margin-bottom: 20px;padding-bottom: 10px;border-bottom: 2px solid #e5e7eb;">
-            <i class="fas fa-presentation" style="margin-right: 10px;"></i>Presentation Slides
-          </h2>
-          <div class="slides-content" style="background: #f8fafc;padding: 20px;border-radius: 8px;border-left: 4px solid #f59e0b;">
-            <pre style="white-space: pre-wrap;font-family: 'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;font-size: 14px;line-height: 1.6;color: #374151;">${fullContent.slides}</pre>
-          </div>
-        </div>
-
-        <!-- Voice-Over Script -->
-        <div class="lesson-voiceover-section">
-          <hr style="margin: 30px 0;border: none;height: 2px;background: linear-gradient(90deg,#8b5cf6,#7c3aed);">
-          <h2 style="color: #5b21b6;font-size: 24px;margin-bottom: 20px;padding-bottom: 10px;border-bottom: 2px solid #e5e7eb;">
-            <i class="fas fa-microphone" style="margin-right: 10px;"></i>Voice-Over Script
-          </h2>
-          <div class="voice-over-script" style="background: #faf5ff;padding: 20px;border-radius: 8px;border-left: 4px solid #8b5cf6;">
-            <pre style="white-space: pre-wrap;font-family: 'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;font-size: 14px;line-height: 1.6;color: #374151;">${fullContent.voiceOver}</pre>
-          </div>
-        </div>
-      </div>
-
-      <style>
-        .tutor-lesson-content {
-          max-width: 100%;
-          font-family: 'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
-          line-height: 1.7;
-          color: #374151;
-        }
-        .tutor-lesson-content h1 {
-          color: #1f2937;
-          font-size: 28px;
-          margin-bottom: 20px;
-          padding-bottom: 10px;
-          border-bottom: 3px solid #3b82f6;
-        }
-        .tutor-lesson-content h2 {
-          color: #374151;
-          font-size: 22px;
-          margin: 25px 0 15px 0;
-          padding-bottom: 8px;
-          border-bottom: 2px solid #e5e7eb;
-        }
-        .tutor-lesson-content h3 {
-          color: #4b5563;
-          font-size: 18px;
-          margin: 20px 0 12px 0;
-          font-weight: 600;
-        }
-        .tutor-lesson-content p {
-          margin-bottom: 16px;
-          text-align: justify;
-        }
-        .tutor-lesson-content ul,.tutor-lesson-content ol {
-          margin: 16px 0;
-          padding-left: 24px;
-        }
-        .tutor-lesson-content li {
-          margin-bottom: 8px;
-        }
-        .tutor-lesson-content blockquote {
-          background: #f3f4f6;
-          border-left: 4px solid #3b82f6;
-          margin: 20px 0;
-          padding: 15px 20px;
-          font-style: italic;
-          color: #4b5563;
-        }
-        .tutor-lesson-content code {
-          background: #f1f5f9;
-          padding: 2px 6px;
-          border-radius: 4px;
-          font-family: 'Courier New',monospace;
-          color: #dc2626;
-        }
-        .tutor-lesson-content .highlight-box {
-          background: linear-gradient(135deg,#dbeafe 0%,#e0e7ff 100%);
-          border: 1px solid #bfdbfe;
-          border-radius: 8px;
-          padding: 20px;
-          margin: 20px 0;
-          border-left: 4px solid #3b82f6;
-        }
-        .tutor-lesson-content .warning-box {
-          background: #fef3cd;
-          border: 1px solid #fbbf24;
-          border-radius: 8px;
-          padding: 20px;
-          margin: 20px 0;
-          border-left: 4px solid #f59e0b;
-        }
-        .tutor-lesson-content .success-box {
-          background: #d1fae5;
-          border: 1px solid #34d399;
-          border-radius: 8px;
-          padding: 20px;
-          margin: 20px 0;
-          border-left: 4px solid #10b981;
-        }
-        .tutor-lesson-content table {
-          width: 100%;
-          border-collapse: collapse;
-          margin: 20px 0;
-          background: white;
-          box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .tutor-lesson-content th,.tutor-lesson-content td {
-          padding: 12px 15px;
-          text-align: left;
-          border-bottom: 1px solid #e5e7eb;
-        }
-        .tutor-lesson-content th {
-          background: #f9fafb;
-          font-weight: 600;
-          color: #374151;
-        }
-        .tutor-lesson-content .case-study {
-          background: #f0f9ff;
-          border: 1px solid #0ea5e9;
-          border-radius: 8px;
-          padding: 20px;
-          margin: 25px 0;
-          border-left: 4px solid #0ea5e9;
-        }
-        .tutor-lesson-content .case-study h3 {
-          color: #0c4a6e;
-          margin-top: 0;
-        }
-        @media (max-width: 768px) {
-          .tutor-lesson-content {
-            font-size: 16px;
-          }
-          .tutor-lesson-content h1 {
-            font-size: 24px;
-          }
-          .tutor-lesson-content h2 {
-            font-size: 20px;
-          }
-          .tutor-lesson-content h3 {
-            font-size: 18px;
-          }
-        }
-      </style>
-    `;
-  }
-
-  return axios.post(
-    `${credentials.baseUrl}/wp-json/tutor/v1/lessons/`,
-    {
-      topic_id: topicId,
-      lesson_title: lesson.lessonTitle,
-      lesson_content: lessonContent,
-      thumbnail_id: 1,
-      lesson_author: 1,
-      video: {
-        source_type: "youtube",
-        source: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-        runtime: {
-          hours: "00",
-          minutes: "10",
-          seconds: "36"
-        }
-      },
-      attachments: [110],
-      preview: true
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${auth}`
-      },
-      signal: abortSignal
-    }
-  );
-};
-
-// NEW: Create quiz for a topic
-const createQuiz=async (topic,topicId,credentials,abortSignal=null)=> {
-  const auth=btoa(`${credentials.username}:${credentials.password}`);
-
-  return axios.post(
-    `${credentials.baseUrl}/wp-json/tutor/v1/quizzes`,
-    {
-      topic_id: topicId,
-      quiz_title: `${topic.topicTitle} Quiz`,
-      quiz_author: 1,
-      quiz_description: `${topic.topicTitle} quiz.`,
-      quiz_options: {
-        time_limit: {
-          time_value: 10,
-          time_type: "minutes"
-        },
-        feedback_mode: "default",
-        question_layout_view: "question_below_each_other",
-        attempts_allowed: 3,
-        passing_grade: 80,
-        max_questions_for_answer: 10,
-        questions_order: "rand",
-        short_answer_characters_limit: 200,
-        open_ended_answer_characters_limit: 500
-      }
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${auth}`
-      },
-      signal: abortSignal
-    }
-  );
-};
-
-// NEW: Add question to quiz
-const createQuizQuestion=async (quizId,questionData,credentials,abortSignal=null)=> {
-  const auth=btoa(`${credentials.username}:${credentials.password}`);
-
-  return axios.post(
-    `${credentials.baseUrl}/wp-json/tutor/v1/quiz-questions`,
-    {
-      quiz_id: quizId,
-      ...questionData,
-      answer_required: 1,
-      randomize_question: 1,
-      question_mark: 1.00,
-      show_question_mark: 1
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${auth}`
-      },
-      signal: abortSignal
-    }
-  );
-};
-
-// NEW: Create assignment for a topic
-const createAssignment=async (topicId,assignmentData,credentials,abortSignal=null)=> {
-  const auth=btoa(`${credentials.username}:${credentials.password}`);
-
-  return axios.post(
-    `${credentials.baseUrl}/wp-json/tutor/v1/assignments/`,
-    {
-      topic_id: topicId,
-      assignment_title: assignmentData.title,
-      assignment_author: 1,
-      assignment_content: assignmentData.content,
-      assignment_options: {
-        time_duration: {
-          value: 1,
-          unit: "weeks"
-        },
-        total_mark: 10,
-        pass_mark: 6,
-        upload_files_limit: 1,
-        upload_file_size_limit: 2
-      }
-    },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Basic ${auth}`
-      },
-      signal: abortSignal
-    }
-  );
+throw lastError;
 };
 
 // NEW: Generate quiz questions using AI
 const generateQuizQuestions=async (apiKey,aggregatedLessonContent,abortSignal=null)=> {
-  const systemPrompt=`Based on the provided lesson content,generate 10 quiz questions of varying types (single choice,multiple choice,and fill-in-the-blanks). For each question,provide the question title,options (where applicable),and the correct answer(s). Ensure the questions are relevant and directly test the learner's understanding of the material.
+const systemPrompt=`Based on the provided lesson content,generate 10 quiz questions of varying types (single choice,multiple choice,and fill-in-the-blanks). For each question,provide the question title,options (where applicable),and the correct answer(s). Ensure the questions are relevant and directly test the learner's understanding of the material.
 
 Return the response as a JSON array with the following structure:
 [
-  {
-    "question_title": "Question text here?",
-    "question_type": "multiple_choice", // or "single_choice" or "fill_in_the_blank"
-    "options": ["Option 1","Option 2","Option 3","Option 4"], // for multiple/single choice
-    "correct_answer": ["Option 1","Option 2"], // array for multiple choice,string for single choice
-    "question": "The capital of France is {dash} and the currency is the {dash}.", // only for fill_in_the_blank
-    "correct_answer_fill": "Paris|Euro" // only for fill_in_the_blank,pipe-separated
-  }
+{
+"question_title": "Question text here?",
+"question_type": "multiple_choice",// or "single_choice" or "fill_in_the_blank"
+"options": ["Option 1","Option 2","Option 3","Option 4"],// for multiple/single choice
+"correct_answer": ["Option 1","Option 2"],// array for multiple choice,string for single choice
+"question": "The capital of France is {dash} and the currency is the {dash}.",// only for fill_in_the_blank
+"correct_answer_fill": "Paris|Euro" // only for fill_in_the_blank,pipe-separated
+}
 ]
 
 Generate a mix of question types:
 - 4 multiple choice questions
-- 4 single choice questions  
+- 4 single choice questions
 - 2 fill-in-the-blank questions`;
 
-  const userPrompt=`Lesson Content: ${aggregatedLessonContent}`;
+const userPrompt=`Lesson Content: ${aggregatedLessonContent}`;
 
-  try {
-    const result=await callOpenAI(
-      apiKey,
-      userPrompt,
-      systemPrompt,
-      false,
-      3,
-      abortSignal
-    );
+try {
+const result=await callOpenAI(
+apiKey,
+userPrompt,
+systemPrompt,
+false,
+3,
+abortSignal
+);
 
-    // Parse the JSON response
-    const content=result.content.trim();
-    let questionsData;
+// Parse the JSON response
+const content=result.content.trim();
+let questionsData;
 
-    // Try to extract JSON from the response
-    const jsonMatch=content.match(/```json\n([\s\S]*?)\n```/) || content.match(/\[[\s\S]*\]/);
-    if (jsonMatch) {
-      const jsonString=jsonMatch[1] || jsonMatch[0];
-      questionsData=JSON.parse(jsonString);
-    } else {
-      questionsData=JSON.parse(content);
-    }
+// Try to extract JSON from the response
+const jsonMatch=content.match(/```json\n([\s\S]*?)\n```/) || content.match(/\[[\s\S]*\]/);
+if (jsonMatch) {
+const jsonString=jsonMatch[1] || jsonMatch[0];
+questionsData=JSON.parse(jsonString);
+} else {
+questionsData=JSON.parse(content);
+}
 
-    return questionsData;
-  } catch (error) {
-    console.error('Error generating quiz questions:',error);
-    throw error;
-  }
+return questionsData;
+
+} catch (error) {
+console.error('Error generating quiz questions:',error);
+throw error;
+}
 };
 
 // NEW: Generate assignment content using AI
 const generateAssignmentContent=async (apiKey,aggregatedLessonContent,abortSignal=null)=> {
-  const systemPrompt=`Based on the provided lesson content,generate a practical assignment. Create a clear title and a detailed assignment description in HTML format. The assignment should require the learner to apply the concepts taught in the topic.
+const systemPrompt=`Based on the provided lesson content,generate a practical assignment. Create a clear title and a detailed assignment description in HTML format. The assignment should require the learner to apply the concepts taught in the topic.
 
 Return the response as a JSON object with the following structure:
 {
-  "title": "Assignment title here",
-  "content": "<p>Assignment content in HTML format here</p>"
+"title": "Assignment title here",
+"content": "<p>Assignment content in HTML format here</p>"
 }
 
 The assignment should:
@@ -1243,308 +879,350 @@ The assignment should:
 - Be appropriate for the skill level
 - Include evaluation criteria`;
 
-  const userPrompt=`Lesson Content: ${aggregatedLessonContent}`;
+const userPrompt=`Lesson Content: ${aggregatedLessonContent}`;
 
-  try {
-    const result=await callOpenAI(
-      apiKey,
-      userPrompt,
-      systemPrompt,
-      false,
-      3,
-      abortSignal
-    );
+try {
+const result=await callOpenAI(
+apiKey,
+userPrompt,
+systemPrompt,
+false,
+3,
+abortSignal
+);
 
-    // Parse the JSON response
-    const content=result.content.trim();
-    let assignmentData;
+// Parse the JSON response
+const content=result.content.trim();
+let assignmentData;
 
-    // Try to extract JSON from the response
-    const jsonMatch=content.match(/```json\n([\s\S]*?)\n```/) || content.match(/{[\s\S]*}/);
-    if (jsonMatch) {
-      const jsonString=jsonMatch[1] || jsonMatch[0];
-      assignmentData=JSON.parse(jsonString);
-    } else {
-      assignmentData=JSON.parse(content);
-    }
+// Try to extract JSON from the response
+const jsonMatch=content.match(/```json\n([\s\S]*?)\n```/) || content.match(/{[\s\S]*}/);
+if (jsonMatch) {
+const jsonString=jsonMatch[1] || jsonMatch[0];
+assignmentData=JSON.parse(jsonString);
+} else {
+assignmentData=JSON.parse(content);
+}
 
-    return assignmentData;
-  } catch (error) {
-    console.error('Error generating assignment content:',error);
-    throw error;
-  }
+return assignmentData;
+
+} catch (error) {
+console.error('Error generating assignment content:',error);
+throw error;
+}
 };
 
-// ✅ UPDATED: Enhanced course content generation with Two-Stage RAG approach
+// ✅ UPDATED: Enhanced course content generation with LMS Factory Pattern, Design Parameters, and AITable Integration
 export const generateCourseContent=async (
-  course,
-  lmsCredentials,
-  apiKey,
-  progressCallbacks={},
-  vectorStoreAssignments={},
-  webSearchOptions={}
+course,
+lmsCredentials,
+apiKey,
+progressCallbacks={},
+vectorStoreAssignments={},
+webSearchOptions={},
+programContext={},// ✅ NEW: Program context for design parameters
+aitableCredentials=null // ✅ NEW: AITable credentials
 )=> {
-  const {onProgress,onTaskUpdate,checkPauseStatus,getAbortSignal}=progressCallbacks;
-  const {usePerplexityWebSearch=false,perplexityApiKey=null,sonarConfig=null}=webSearchOptions;
+const {onProgress,onTaskUpdate,checkPauseStatus,getAbortSignal}=progressCallbacks;
+const {usePerplexityWebSearch=false,perplexityApiKey=null,sonarConfig=null}=webSearchOptions;
 
-  let courseTokenUsage={
-    prompt_tokens: 0,
-    completion_tokens: 0,
-    total_tokens: 0
-  };
+let courseTokenUsage={
+prompt_tokens: 0,
+completion_tokens: 0,
+total_tokens: 0
+};
 
-  const courseGenerationId=`course_gen_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
-  const startTime=new Date();
+const courseGenerationId=`course_gen_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
+const startTime=new Date();
 
-  try {
-    console.log("🚀 Starting enhanced course content generation with Two-Stage RAG approach...");
-    
-    const abortSignal=getAbortSignal?.();
-    const totalTopics=course.topics?.length || 0;
-    const totalLessons=course.topics?.reduce((total,topic)=> total + (topic.lessons?.length || 0),0) || 0;
-    const webSearchTasks=usePerplexityWebSearch ? totalTopics : 0;
+// ✅ NEW: AITable validation and setup
+let aitableValidated=false;
+let aitableConfig=null;
 
-    // Updated task calculation: lessons (7 tasks each) + quizzes (2 tasks each) + assignments (1 task each)
-    const totalTasks=(totalLessons * 7) + (totalTopics * 3) + webSearchTasks; // 7=reading content + 5 additional sections + LMS creation
-    let completedTasks=0;
+try {
+console.log("🚀 Starting enhanced course content generation with LMS Factory Pattern, Design Parameters, and AITable Integration...");
+console.log(`📊 LMS Type: ${lmsCredentials.lmsType || 'tutor'} (${lmsCredentials.lmsType===LMS_TYPES.LIFTER ? 'LifterLMS' : 'TutorLMS'})`);
 
-    const courseId=course.id || `temp_${Date.now()}`;
-    const recoveryState=await loadRecoveryState(courseId);
+// ✅ NEW: Validate AITable credentials if provided
+if (aitableCredentials && aitableCredentials.isActive && aitableCredentials.apiKey && aitableCredentials.datasheetId) {
+console.log('🔍 Validating AITable credentials...');
+try {
+const validation=await validateAITableCredentials(aitableCredentials.apiKey,aitableCredentials.datasheetId);
+if (validation.isValid) {
+aitableValidated=true;
+aitableConfig=aitableCredentials;
+console.log('✅ AITable credentials validated - course data will be posted after successful generation');
+} else {
+console.warn('⚠️ AITable validation failed:',validation.error);
+console.warn('⚠️ Continuing without AITable integration');
+}
+} catch (error) {
+console.error('❌ Error validating AITable credentials:',error);
+console.warn('⚠️ Continuing without AITable integration');
+}
+}
 
-    if (recoveryState) {
-      console.log("Found recovery state,resuming from previous session");
-      onProgress?.(
-        recoveryState.progress || 5,
-        'Resuming course generation from previous session...',
-        'resuming'
-      );
-      completedTasks=recoveryState.completedTasks || 0;
-      courseTokenUsage=recoveryState.courseTokenUsage || courseTokenUsage;
-      await new Promise(resolve=> setTimeout(resolve,2000));
-    }
+const abortSignal=getAbortSignal?.();
+const totalTopics=course.topics?.length || 0;
+const totalLessons=course.topics?.reduce((total,topic)=> total + (topic.lessons?.length || 0),0) || 0;
+const webSearchTasks=usePerplexityWebSearch ? totalTopics : 0;
 
-    await supabase.from('api_logs_74621').insert([{
-      operation: 'content_generation_start',
-      request_id: courseGenerationId,
-      request_data: {
-        course_title: course.courseTitle,
-        course_id: courseId,
-        topics_count: totalTopics,
-        total_lessons: totalLessons,
-        use_web_search: usePerplexityWebSearch,
-        sonar_config: sonarConfig,
-        is_resumed: !!recoveryState
-      }
-    }]);
+// Updated task calculation: lessons (7 tasks each) + quizzes (2 tasks each) + assignments (1 task each)
+const totalTasks=(totalLessons * 7) + (totalTopics * 3) + webSearchTasks;// 7=reading content + 5 additional sections + LMS creation
+let completedTasks=0;
 
-    onProgress?.(5,'Creating course in LMS...','course_creation');
+const courseId=course.id || `temp_${Date.now()}`;
+const recoveryState=await loadRecoveryState(courseId);
 
-    let lmsData=null;
-    if (recoveryState?.lmsData) {
-      lmsData=recoveryState.lmsData;
-      console.log('Using existing LMS course data from recovery state:',lmsData);
-    } else {
-      for (let attempt=1;attempt <=3;attempt++) {
-        try {
-          const courseResponse=await createCourse(course,lmsCredentials,abortSignal);
-          lmsData={courseId: courseResponse.data.data};
-          console.log('Created course with ID:',lmsData.courseId);
+if (recoveryState) {
+console.log("Found recovery state,resuming from previous session");
+onProgress?.(
+recoveryState.progress || 5,
+'Resuming course generation from previous session...',
+'resuming'
+);
+completedTasks=recoveryState.completedTasks || 0;
+courseTokenUsage=recoveryState.courseTokenUsage || courseTokenUsage;
+await new Promise(resolve=> setTimeout(resolve,2000));
+}
 
-          try {
-            await supabase.from('courses').insert({
-              program_id: course.programId || null,
-              course_title: course.courseTitle,
-              course_description: course.courseDescription,
-              wordpress_course_id: lmsData.courseId,
-              status: 'in_progress'
-            });
-            console.log('Course data stored in Supabase');
-          } catch (dbError) {
-            console.error('Failed to store course data in Supabase:',dbError);
-          }
+await supabase.from('api_logs_74621').insert([{
+operation: 'content_generation_start',
+request_id: courseGenerationId,
+request_data: {
+course_title: course.courseTitle,
+course_id: courseId,
+topics_count: totalTopics,
+total_lessons: totalLessons,
+use_web_search: usePerplexityWebSearch,
+sonar_config: sonarConfig,
+is_resumed: !!recoveryState,
+lms_type: lmsCredentials.lmsType || 'tutor',
+has_design_parameters: !!(course.designParameters || programContext.designParameters),
+aitable_enabled: aitableValidated
+}
+}]);
 
-          break;
-        } catch (error) {
-          console.error(`LMS course creation attempt ${attempt} failed:`,error);
-          await supabase.from('api_logs_74621').insert([{
-            operation: 'lms_course_creation_error',
-            request_id: courseGenerationId,
-            error: error.message,
-            request_data: {
-              attempt: attempt,
-              course_title: course.courseTitle
-            }
-          }]);
+// ✅ NEW: Create LMS service using factory pattern
+console.log(`🏭 Creating ${lmsCredentials.lmsType || 'tutor'} LMS service...`);
+const lmsService=createLMSService(lmsCredentials.lmsType || LMS_TYPES.TUTOR,lmsCredentials);
+console.log(`✅ LMS Service created: ${lmsService.getLMSType()}`);
 
-          if (attempt===3) {
-            throw new Error('Failed to create course in LMS after multiple attempts');
-          }
+onProgress?.(5,'Creating course in LMS...','course_creation');
 
-          const retryDelay=Math.pow(2,attempt) * 1000;
-          console.log(`Retrying LMS course creation in ${retryDelay/1000} seconds...`);
-          await new Promise(resolve=> setTimeout(resolve,retryDelay));
-        }
-      }
-    }
+let lmsData=null;
+if (recoveryState?.lmsData) {
+lmsData=recoveryState.lmsData;
+console.log('Using existing LMS course data from recovery state:',lmsData);
+} else {
+for (let attempt=1;attempt <=3;attempt++) {
+try {
+const courseResponse=await lmsService.createCourse(course,abortSignal);
+lmsData={courseId: courseResponse.data.data};
+console.log('Created course with ID:',lmsData.courseId);
 
-    await saveRecoveryState(courseId,{
-      lmsData,
-      progress: 10,
-      completedTasks,
-      courseTokenUsage,
-      timestamp: new Date().toISOString()
-    });
+try {
+await supabase.from('courses').insert({
+program_id: course.programId || null,
+course_title: course.courseTitle,
+course_description: course.courseDescription,
+wordpress_course_id: lmsData.courseId,
+status: 'in_progress',
+lms_type: lmsService.getLMSType()
+});
+console.log('Course data stored in Supabase');
+} catch (dbError) {
+console.error('Failed to store course data in Supabase:',dbError);
+}
 
-    let courseContext=recoveryState?.courseContext;
-    if (!courseContext) {
-      onProgress?.(10,'Generating course context...','context_generation');
+break;
+} catch (error) {
+console.error(`LMS course creation attempt ${attempt} failed:`,error);
+await supabase.from('api_logs_74621').insert([{
+operation: 'lms_course_creation_error',
+request_id: courseGenerationId,
+error: error.message,
+request_data: {
+attempt: attempt,
+course_title: course.courseTitle,
+lms_type: lmsService.getLMSType()
+}
+}]);
 
-      const courseContextPrompt=`
+if (attempt===3) {
+throw new Error(`Failed to create course in ${lmsService.getLMSType()} LMS after multiple attempts`);
+}
+
+const retryDelay=Math.pow(2,attempt) * 1000;
+console.log(`Retrying LMS course creation in ${retryDelay / 1000} seconds...`);
+await new Promise(resolve=> setTimeout(resolve,retryDelay));
+}
+}
+}
+
+await saveRecoveryState(courseId,{
+lmsData,
+progress: 10,
+completedTasks,
+courseTokenUsage,
+timestamp: new Date().toISOString()
+});
+
+let courseContext=recoveryState?.courseContext;
+if (!courseContext) {
+onProgress?.(10,'Generating course context...','context_generation');
+
+const courseContextPrompt=`
 Course Title: ${course.courseTitle}
 Course Description: ${course.courseDescription}
 
 Generate a brief,concise context of the overall course based on the course title and description provided. This context will be used as a high-level overview for subsequent lesson content generation.
-      `;
+`;
 
-      try {
-        const contextResult=await callOpenAI(
-          apiKey,
-          courseContextPrompt,
-          "You are a concise educational content summarizer.",
-          false,
-          3,
-          abortSignal
-        );
+try {
+const contextResult=await callOpenAI(
+apiKey,
+courseContextPrompt,
+"You are a concise educational content summarizer.",
+false,
+3,
+abortSignal
+);
 
-        courseContext=contextResult.content;
+courseContext=contextResult.content;
 
-        if (contextResult.tokenUsage) {
-          courseTokenUsage.prompt_tokens +=contextResult.tokenUsage.prompt_tokens || 0;
-          courseTokenUsage.completion_tokens +=contextResult.tokenUsage.completion_tokens || 0;
-          courseTokenUsage.total_tokens +=contextResult.tokenUsage.total_tokens || 0;
-        }
+if (contextResult.tokenUsage) {
+courseTokenUsage.prompt_tokens +=contextResult.tokenUsage.prompt_tokens || 0;
+courseTokenUsage.completion_tokens +=contextResult.tokenUsage.completion_tokens || 0;
+courseTokenUsage.total_tokens +=contextResult.tokenUsage.total_tokens || 0;
+}
 
-        await saveRecoveryState(courseId,{
-          lmsData,
-          courseContext,
-          progress: 15,
-          completedTasks,
-          courseTokenUsage,
-          timestamp: new Date().toISOString()
-        });
-      } catch (error) {
-        console.error("Error generating course context:",error);
-        await supabase.from('api_logs_74621').insert([{
-          operation: 'course_context_generation_error',
-          request_id: courseGenerationId,
-          error: error.message
-        }]);
-        courseContext=`Course: ${course.courseTitle}. ${course.courseDescription}`;
-      }
-    }
+await saveRecoveryState(courseId,{
+lmsData,
+courseContext,
+progress: 15,
+completedTasks,
+courseTokenUsage,
+timestamp: new Date().toISOString()
+});
+} catch (error) {
+console.error("Error generating course context:",error);
+await supabase.from('api_logs_74621').insert([{
+operation: 'course_context_generation_error',
+request_id: courseGenerationId,
+error: error.message
+}]);
+courseContext=`Course: ${course.courseTitle}. ${course.courseDescription}`;
+}
+}
 
-    let currentTopicIndex=0;
-    let currentLessonIndex=0;
-    
-    if (recoveryState?.currentTopicIndex !==undefined) {
-      currentTopicIndex=recoveryState.currentTopicIndex;
-      currentLessonIndex=recoveryState.currentLessonIndex || 0;
-    }
+// ✅ NEW: Prepare data for AITable if enabled
+let allSlidesData='';
+let allLessonSlides=[];
 
-    for (let i=currentTopicIndex;i < (course.topics?.length || 0);i++) {
-      const topic=course.topics[i];
+let currentTopicIndex=0;
+let currentLessonIndex=0;
 
-      onProgress?.(
-        15 + ((i / totalTopics) * 40),
-        `Processing topic ${i + 1} of ${totalTopics}: ${topic.topicTitle}`,
-        'topic_processing',
-        `Creating topic in LMS: ${topic.topicTitle}`,
-        {
-          currentTopic: topic.topicTitle,
-          topicsCompleted: i,
-          totalTopics: totalTopics,
-          lessonsCompleted: completedTasks / 7,
-          totalLessons: totalLessons
-        }
-      );
+if (recoveryState?.currentTopicIndex !==undefined) {
+currentTopicIndex=recoveryState.currentTopicIndex;
+currentLessonIndex=recoveryState.currentLessonIndex || 0;
+}
 
-      await checkPauseStatus?.();
-      if (abortSignal?.aborted) {
-        throw new Error('Request aborted by user');
-      }
+for (let i=currentTopicIndex;i < (course.topics?.length || 0);i++) {
+const topic=course.topics[i];
 
-      let topicId;
-      if (recoveryState?.topics?.[i]?.topicId) {
-        topicId=recoveryState.topics[i].topicId;
-        console.log(`Using existing topic ID from recovery state: ${topicId}`);
-      } else {
-        try {
-          const topicResponse=await createTopic(topic,lmsData.courseId,lmsCredentials,abortSignal);
-          topicId=topicResponse.data.data;
-          console.log(`Created topic with ID: ${topicId}`);
+onProgress?.(
+15 + ((i / totalTopics) * 40),
+`Processing topic ${i + 1} of ${totalTopics}: ${topic.topicTitle}`,
+'topic_processing',
+`Creating topic in LMS: ${topic.topicTitle}`,
+{
+currentTopic: topic.topicTitle,
+topicsCompleted: i,
+totalTopics: totalTopics,
+lessonsCompleted: completedTasks / 7,
+totalLessons: totalLessons
+}
+);
 
-          const updatedRecoveryState=await loadRecoveryState(courseId);
-          const topics=updatedRecoveryState?.topics || [];
-          topics[i]={...topics[i],topicId};
-          await saveRecoveryState(courseId,{
-            ...updatedRecoveryState,
-            topics,
-            currentTopicIndex: i,
-            currentLessonIndex: 0
-          });
-        } catch (error) {
-          console.error(`Error creating topic ${topic.topicTitle}:`,error);
-          await supabase.from('api_logs_74621').insert([{
-            operation: 'topic_creation_error',
-            request_id: courseGenerationId,
-            error: error.message,
-            request_data: {
-              topic_title: topic.topicTitle,
-              topic_index: i
-            }
-          }]);
-          continue;
-        }
-      }
+await checkPauseStatus?.();
+if (abortSignal?.aborted) {
+throw new Error('Request aborted by user');
+}
 
-      // ✅ FIXED: Generate web search context with corrected configuration
-      let topicWebSearchContext='';
-      let lessonWebSearchContexts={};
+let topicId;
+if (recoveryState?.topics?.[i]?.topicId) {
+topicId=recoveryState.topics[i].topicId;
+console.log(`Using existing topic ID from recovery state: ${topicId}`);
+} else {
+try {
+// ✅ Use unified LMS service for topic creation
+const topicResponse=await lmsService.createTopic(topic,lmsData.courseId,abortSignal);
+topicId=topicResponse.data.data;
+console.log(`Created topic with ID: ${topicId} using ${lmsService.getLMSType()}`);
 
-      if (usePerplexityWebSearch && perplexityApiKey) {
-        onTaskUpdate?.(completedTasks,`Generating web search context for topic: ${topic.topicTitle}`);
-        
-        try {
-          console.log(`🌐 Starting web search context generation for topic: ${topic.topicTitle}`);
-          
-          const webSearchResult=await generateWebSearchContext(
-            perplexityApiKey,
-            course,
-            topic,
-            topic.lessons || [],
-            sonarConfig
-          );
+const updatedRecoveryState=await loadRecoveryState(courseId);
+const topics=updatedRecoveryState?.topics || [];
+topics[i]={...topics[i],topicId};
+await saveRecoveryState(courseId,{
+...updatedRecoveryState,
+topics,
+currentTopicIndex: i,
+currentLessonIndex: 0
+});
+} catch (error) {
+console.error(`Error creating topic ${topic.topicTitle}:`,error);
+await supabase.from('api_logs_74621').insert([{
+operation: 'topic_creation_error',
+request_id: courseGenerationId,
+error: error.message,
+request_data: {
+topic_title: topic.topicTitle,
+topic_index: i,
+lms_type: lmsService.getLMSType()
+}
+}]);
+continue;
+}
+}
 
-          topicWebSearchContext=webSearchResult.topicWebSearchContext;
-          lessonWebSearchContexts=webSearchResult.lessonWebSearchContexts;
+// ✅ FIXED: Generate web search context with corrected configuration
+let topicWebSearchContext='';
+let lessonWebSearchContexts={};
 
-          console.log(`✅ Generated web search context for topic: ${topic.topicTitle}`);
-          console.log(`📊 Topic context: ${topicWebSearchContext.length} chars`);
-          console.log(`📊 Lesson contexts: ${Object.keys(lessonWebSearchContexts).length} lessons`);
-          
-          completedTasks++;
-        } catch (error) {
-          console.error(`❌ Error generating web search context for topic ${topic.topicTitle}:`,error);
-          // Continue without web search context
-          topicWebSearchContext='';
-          lessonWebSearchContexts={};
-        }
-      }
+if (usePerplexityWebSearch && perplexityApiKey) {
+onTaskUpdate?.(completedTasks,`Generating web search context for topic: ${topic.topicTitle}`);
 
-      let topicIntroduction=topic.topicIntroduction || recoveryState?.topics?.[i]?.topicIntroduction;
-      if (!topicIntroduction) {
-        try {
-          const topicDetailsPrompt=`
+try {
+console.log(`🌐 Starting web search context generation for topic: ${topic.topicTitle}`);
+const webSearchResult=await generateWebSearchContext(
+perplexityApiKey,
+course,
+topic,
+topic.lessons || [],
+sonarConfig
+);
+
+topicWebSearchContext=webSearchResult.topicWebSearchContext;
+lessonWebSearchContexts=webSearchResult.lessonWebSearchContexts;
+
+console.log(`✅ Generated web search context for topic: ${topic.topicTitle}`);
+console.log(`📊 Topic context: ${topicWebSearchContext.length} chars`);
+console.log(`📊 Lesson contexts: ${Object.keys(lessonWebSearchContexts).length} lessons`);
+
+completedTasks++;
+} catch (error) {
+console.error(`❌ Error generating web search context for topic ${topic.topicTitle}:`,error);
+// Continue without web search context
+topicWebSearchContext='';
+lessonWebSearchContexts={};
+}
+}
+
+let topicIntroduction=topic.topicIntroduction || recoveryState?.topics?.[i]?.topicIntroduction;
+if (!topicIntroduction) {
+try {
+const topicDetailsPrompt=`
 Course Title: ${course.courseTitle}
 Course Description: ${course.courseDescription}
 Topic Title: ${topic.topicTitle}
@@ -1558,328 +1236,425 @@ Please integrate this current research context into your response.
 ` : ''}
 
 Please generate a detailed topicIntroduction and an immersiveMethodBrief. The immersiveMethodBrief should describe a practical activity or project related to the topic that helps learners apply the concepts.
-          `;
+`;
 
-          const topicDetailsResult=await callOpenAI(
-            apiKey,
-            topicDetailsPrompt,
-            "You are an expert instructional designer.",
-            false,
-            3,
-            abortSignal
-          );
+const topicDetailsResult=await callOpenAI(
+apiKey,
+topicDetailsPrompt,
+"You are an expert instructional designer.",
+false,
+3,
+abortSignal
+);
 
-          topicIntroduction=topicDetailsResult.content;
+topicIntroduction=topicDetailsResult.content;
 
-          if (topicDetailsResult.tokenUsage) {
-            courseTokenUsage.prompt_tokens +=topicDetailsResult.tokenUsage.prompt_tokens || 0;
-            courseTokenUsage.completion_tokens +=topicDetailsResult.tokenUsage.completion_tokens || 0;
-            courseTokenUsage.total_tokens +=topicDetailsResult.tokenUsage.total_tokens || 0;
-          }
+if (topicDetailsResult.tokenUsage) {
+courseTokenUsage.prompt_tokens +=topicDetailsResult.tokenUsage.prompt_tokens || 0;
+courseTokenUsage.completion_tokens +=topicDetailsResult.tokenUsage.completion_tokens || 0;
+courseTokenUsage.total_tokens +=topicDetailsResult.tokenUsage.total_tokens || 0;
+}
 
-          const updatedRecoveryState=await loadRecoveryState(courseId);
-          const topics=updatedRecoveryState?.topics || [];
-          topics[i]={...topics[i],topicIntroduction};
-          await saveRecoveryState(courseId,{
-            ...updatedRecoveryState,
-            topics
-          });
-        } catch (error) {
-          console.error(`Error generating topic introduction for ${topic.topicTitle}:`,error);
-          topicIntroduction=topic.topicLearningObjectiveDescription;
-        }
-      }
+const updatedRecoveryState=await loadRecoveryState(courseId);
+const topics=updatedRecoveryState?.topics || [];
+topics[i]={...topics[i],topicIntroduction};
+await saveRecoveryState(courseId,{
+...updatedRecoveryState,
+topics
+});
+} catch (error) {
+console.error(`Error generating topic introduction for ${topic.topicTitle}:`,error);
+topicIntroduction=topic.topicLearningObjectiveDescription;
+}
+}
 
-      // Store lesson contents for quiz and assignment generation
-      const topicLessonContents=[];
-      const startLessonIndex=i===currentTopicIndex ? currentLessonIndex : 0;
+// Store lesson contents for quiz and assignment generation
+const topicLessonContents=[];
+const startLessonIndex=i===currentTopicIndex ? currentLessonIndex : 0;
 
-      for (let j=startLessonIndex;j < (topic.lessons?.length || 0);j++) {
-        const lesson=topic.lessons[j];
+for (let j=startLessonIndex;j < (topic.lessons?.length || 0);j++) {
+const lesson=topic.lessons[j];
 
-        onProgress?.(
-          55 + ((completedTasks / totalTasks) * 45),
-          `Generating content for lesson ${j + 1} of ${topic.lessons.length}: ${lesson.lessonTitle}`,
-          'lesson_generation',
-          `Generating lesson content: ${lesson.lessonTitle}`,
-          {
-            currentTopic: topic.topicTitle,
-            currentLesson: lesson.lessonTitle,
-            topicsCompleted: i,
-            totalTopics: totalTopics,
-            lessonsCompleted: completedTasks / 7,
-            totalLessons: totalLessons
-          }
-        );
+onProgress?.(
+55 + ((completedTasks / totalTasks) * 45),
+`Generating content for lesson ${j + 1} of ${topic.lessons.length}: ${lesson.lessonTitle}`,
+'lesson_generation',
+`Generating lesson content: ${lesson.lessonTitle}`,
+{
+currentTopic: topic.topicTitle,
+currentLesson: lesson.lessonTitle,
+topicsCompleted: i,
+totalTopics: totalTopics,
+lessonsCompleted: completedTasks / 7,
+totalLessons: totalLessons
+}
+);
 
-        await checkPauseStatus?.();
-        if (abortSignal?.aborted) {
-          throw new Error('Request aborted by user');
-        }
+await checkPauseStatus?.();
+if (abortSignal?.aborted) {
+throw new Error('Request aborted by user');
+}
 
-        try {
-          // ✅ UPDATED: Use Two-Stage RAG approach for reading content generation
-          onTaskUpdate?.(completedTasks,`Generating reading content for: ${lesson.lessonTitle}`);
+try {
+// ✅ UPDATED: Use Two-Stage RAG approach with design parameters
+onTaskUpdate?.(completedTasks,`Generating reading content for: ${lesson.lessonTitle}`);
 
-          const lessonVectorStoreId=vectorStoreAssignments[lesson.id];
-          const topicVectorStoreId=vectorStoreAssignments[topic.id];
-          const vectorStoreIds=lessonVectorStoreId ? [lessonVectorStoreId] : (topicVectorStoreId ? [topicVectorStoreId] : []);
-          
-          // ✅ CORRECTED: Get lesson-specific web search context
-          const lessonWebSearchContext=lessonWebSearchContexts[`lesson_${lesson.id}_websearchcontext`] || '';
+const lessonVectorStoreId=vectorStoreAssignments[lesson.id];
+const topicVectorStoreId=vectorStoreAssignments[topic.id];
+const vectorStoreIds=lessonVectorStoreId ? [lessonVectorStoreId] : (topicVectorStoreId ? [topicVectorStoreId] : []);
 
-          console.log(`🎯 Using Two-Stage RAG for lesson: ${lesson.lessonTitle}`);
-          console.log(`📚 Vector stores: ${vectorStoreIds.length > 0 ? vectorStoreIds.join(',') : 'None'}`);
-          console.log(`🌐 Web search context: ${lessonWebSearchContext ? `Available (${lessonWebSearchContext.length} chars)` : 'Not available'}`);
+// ✅ CORRECTED: Get lesson-specific web search context
+const lessonWebSearchContext=lessonWebSearchContexts[`lesson_${lesson.id}_websearchcontext`] || '';
 
-          const readingResult=await generateReadingContentWithTwoStageRAG(
-            apiKey,
-            vectorStoreIds,
-            lesson,
-            topic,
-            courseContext,
-            course.mustHaveAspects || '',
-            course.designConsiderations || '',
-            lessonWebSearchContext, // ✅ CORRECTED: Pass lesson-specific context
-            'Procure to pay professionals',
-            abortSignal
-          );
+// ✅ NEW: Get effective design parameters for this course
+const effectiveDesignParameters=getEffectiveDesignParameters(course,programContext);
 
-          const readingContent=readingResult.content;
-          const readingTokenUsage=readingResult.tokenUsage;
+console.log(`🎯 Using Two-Stage RAG for lesson: ${lesson.lessonTitle}`);
+console.log(`📚 Vector stores: ${vectorStoreIds.length > 0 ? vectorStoreIds.join(',') : 'None'}`);
+console.log(`🌐 Web search context: ${lessonWebSearchContext ? `Available (${lessonWebSearchContext.length} chars)` : 'Not available'}`);
+console.log(`⚙️ Design parameters:`,effectiveDesignParameters);
 
-          if (readingTokenUsage) {
-            courseTokenUsage.prompt_tokens +=readingTokenUsage.prompt_tokens || 0;
-            courseTokenUsage.completion_tokens +=readingTokenUsage.completion_tokens || 0;
-            courseTokenUsage.total_tokens +=readingTokenUsage.total_tokens || 0;
-          }
+const readingResult=await generateReadingContentWithTwoStageRAG(
+apiKey,
+vectorStoreIds,
+lesson,
+topic,
+courseContext,
+course.mustHaveAspects || '',
+course.designConsiderations || '',
+lessonWebSearchContext,// ✅ CORRECTED: Pass lesson-specific context
+'Procure to pay professionals',
+effectiveDesignParameters,// ✅ NEW: Pass design parameters
+abortSignal
+);
 
-          // Store non-HTML content for quiz/assignment generation
-          const plainTextContent=readingContent.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
-          topicLessonContents.push(plainTextContent);
+const readingContent=readingResult.content;
+const readingTokenUsage=readingResult.tokenUsage;
 
-          completedTasks++;
+if (readingTokenUsage) {
+courseTokenUsage.prompt_tokens +=readingTokenUsage.prompt_tokens || 0;
+courseTokenUsage.completion_tokens +=readingTokenUsage.completion_tokens || 0;
+courseTokenUsage.total_tokens +=readingTokenUsage.total_tokens || 0;
+}
 
-          // ✅ Generate additional sections using standard approach
-          onTaskUpdate?.(completedTasks,`Generating additional sections for: ${lesson.lessonTitle}`);
+// Store non-HTML content for quiz/assignment generation
+const plainTextContent=readingContent.replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();
+topicLessonContents.push(plainTextContent);
 
-          const additionalSections=await generateAdditionalLessonSections(
-            apiKey,
-            lesson,
-            readingContent,
-            lessonWebSearchContext, // ✅ CORRECTED: Pass lesson-specific context
-            abortSignal
-          );
+completedTasks++;
 
-          if (additionalSections.tokenUsage) {
-            courseTokenUsage.prompt_tokens +=additionalSections.tokenUsage.prompt_tokens || 0;
-            courseTokenUsage.completion_tokens +=additionalSections.tokenUsage.completion_tokens || 0;
-            courseTokenUsage.total_tokens +=additionalSections.tokenUsage.total_tokens || 0;
-          }
+// ✅ Generate additional sections using standard approach with design parameters
+onTaskUpdate?.(completedTasks,`Generating additional sections for: ${lesson.lessonTitle}`);
 
-          completedTasks +=5; // FAQ,Latest Developments,Additional Reading,Slides,Voice-over
+const additionalSections=await generateAdditionalLessonSections(
+apiKey,
+lesson,
+readingContent,
+lessonWebSearchContext,// ✅ CORRECTED: Pass lesson-specific context
+effectiveDesignParameters,// ✅ NEW: Pass design parameters
+abortSignal
+);
 
-          // ✅ Combine all parts into comprehensive lesson content
-          const fullLessonContent={
-            readingContent: readingContent,
-            faq: additionalSections.faq,
-            latestDevelopments: additionalSections.latestDevelopments,
-            additionalReading: additionalSections.additionalReading,
-            slides: additionalSections.slides,
-            voiceOver: additionalSections.voiceOver
-          };
+if (additionalSections.tokenUsage) {
+courseTokenUsage.prompt_tokens +=additionalSections.tokenUsage.prompt_tokens || 0;
+courseTokenUsage.completion_tokens +=additionalSections.tokenUsage.completion_tokens || 0;
+courseTokenUsage.total_tokens +=additionalSections.tokenUsage.total_tokens || 0;
+}
 
-          // Create the lesson in the LMS with all formatted content
-          await createLesson(lesson,topicId,lmsCredentials,fullLessonContent,abortSignal);
-          console.log(`✅ Created comprehensive lesson: ${lesson.lessonTitle}`);
-          
-          completedTasks++; // LMS creation
+completedTasks +=5;// FAQ,Latest Developments,Additional Reading,Slides,Voice-over
 
-          await saveRecoveryState(courseId,{
-            lmsData,
-            courseContext,
-            progress: 55 + ((completedTasks / totalTasks) * 45),
-            completedTasks,
-            courseTokenUsage,
-            currentTopicIndex: i,
-            currentLessonIndex: j + 1,
-            timestamp: new Date().toISOString()
-          });
-        } catch (error) {
-          console.error(`Error generating content for lesson ${lesson.lessonTitle}:`,error);
-          await supabase.from('api_logs_74621').insert([{
-            operation: 'lesson_generation_error',
-            request_id: courseGenerationId,
-            error: error.message,
-            request_data: {
-              lesson_title: lesson.lessonTitle,
-              topic_title: topic.topicTitle,
-              topic_index: i,
-              lesson_index: j
-            }
-          }]);
+// ✅ NEW: Store slides data for AITable if enabled
+if (aitableValidated) {
+allSlidesData +=additionalSections.slides + '\n\n';
+}
 
-          await saveRecoveryState(courseId,{
-            lmsData,
-            courseContext,
-            progress: 55 + ((completedTasks / totalTasks) * 45),
-            completedTasks,
-            courseTokenUsage,
-            currentTopicIndex: i,
-            currentLessonIndex: j,
-            timestamp: new Date().toISOString(),
-            error: error.message
-          });
+// ✅ Combine all parts into comprehensive lesson content
+const fullLessonContent={
+readingContent: readingContent,
+faq: additionalSections.faq,
+latestDevelopments: additionalSections.latestDevelopments,
+additionalReading: additionalSections.additionalReading,
+slides: additionalSections.slides,
+voiceOver: additionalSections.voiceOver
+};
 
-          if (abortSignal?.aborted) {
-            throw new Error('Request aborted by user');
-          }
-        }
-      }
+// ✅ Create the lesson in the LMS using unified service
+await lmsService.createLesson(lesson,topicId,fullLessonContent,abortSignal);
+console.log(`✅ Created comprehensive lesson: ${lesson.lessonTitle} using ${lmsService.getLMSType()}`);
 
-      // After all lessons for this topic are created,generate quiz and assignment
-      if (topicLessonContents.length > 0) {
-        const aggregatedLessonContent=topicLessonContents.join('\n\n');
+completedTasks++;// LMS creation
 
-        // Generate Quiz
-        onTaskUpdate?.(completedTasks,`Creating quiz for topic: ${topic.topicTitle}`);
-        try {
-          // Step 1: Create quiz shell
-          const quizResponse=await createQuiz(topic,topicId,lmsCredentials,abortSignal);
-          const quizId=quizResponse.data.data;
-          console.log(`Created quiz with ID: ${quizId} for topic: ${topic.topicTitle}`);
-          completedTasks++;
+await saveRecoveryState(courseId,{
+lmsData,
+courseContext,
+progress: 55 + ((completedTasks / totalTasks) * 45),
+completedTasks,
+courseTokenUsage,
+currentTopicIndex: i,
+currentLessonIndex: j + 1,
+timestamp: new Date().toISOString()
+});
 
-          // Step 2: Generate and add questions
-          onTaskUpdate?.(completedTasks,`Generating quiz questions for: ${topic.topicTitle}`);
-          const questionsData=await generateQuizQuestions(apiKey,aggregatedLessonContent,abortSignal);
+} catch (error) {
+console.error(`Error generating content for lesson ${lesson.lessonTitle}:`,error);
+await supabase.from('api_logs_74621').insert([{
+operation: 'lesson_generation_error',
+request_id: courseGenerationId,
+error: error.message,
+request_data: {
+lesson_title: lesson.lessonTitle,
+topic_title: topic.topicTitle,
+topic_index: i,
+lesson_index: j,
+lms_type: lmsService.getLMSType()
+}
+}]);
 
-          if (questionsData && Array.isArray(questionsData)) {
-            for (const questionData of questionsData) {
-              let formattedQuestionData;
+await saveRecoveryState(courseId,{
+lmsData,
+courseContext,
+progress: 55 + ((completedTasks / totalTasks) * 45),
+completedTasks,
+courseTokenUsage,
+currentTopicIndex: i,
+currentLessonIndex: j,
+timestamp: new Date().toISOString(),
+error: error.message
+});
 
-              if (questionData.question_type==='fill_in_the_blank') {
-                formattedQuestionData={
-                  question_title: "Fill up the gaps",
-                  question_type: "fill_in_the_blank",
-                  question: questionData.question,
-                  correct_answer: questionData.correct_answer_fill
-                };
-              } else if (questionData.question_type==='single_choice') {
-                formattedQuestionData={
-                  question_title: questionData.question_title,
-                  question_type: "single_choice",
-                  options: questionData.options,
-                  correct_answer: Array.isArray(questionData.correct_answer) ? questionData.correct_answer[0] : questionData.correct_answer
-                };
-              } else { // multiple_choice
-                formattedQuestionData={
-                  question_title: questionData.question_title,
-                  question_type: "multiple_choice",
-                  options: questionData.options,
-                  correct_answer: Array.isArray(questionData.correct_answer) ? questionData.correct_answer : [questionData.correct_answer]
-                };
-              }
+if (abortSignal?.aborted) {
+throw new Error('Request aborted by user');
+}
+}
+}
 
-              try {
-                await createQuizQuestion(quizId,formattedQuestionData,lmsCredentials,abortSignal);
-                console.log(`Added question: ${formattedQuestionData.question_title}`);
-              } catch (questionError) {
-                console.error(`Error adding quiz question:`,questionError);
-              }
-            }
-          }
+// ✅ After all lessons for this topic are created,generate quiz and assignment
+if (topicLessonContents.length > 0) {
+const aggregatedLessonContent=topicLessonContents.join('\n\n');
 
-          if (questionsData && questionsData.tokenUsage) {
-            courseTokenUsage.prompt_tokens +=questionsData.tokenUsage.prompt_tokens || 0;
-            courseTokenUsage.completion_tokens +=questionsData.tokenUsage.completion_tokens || 0;
-            courseTokenUsage.total_tokens +=questionsData.tokenUsage.total_tokens || 0;
-          }
+// ✅ Generate Quiz (handles different attachment levels)
+onTaskUpdate?.(completedTasks,`Creating quiz for topic: ${topic.topicTitle}`);
 
-          completedTasks++;
-        } catch (quizError) {
-          console.error(`Error creating quiz for topic ${topic.topicTitle}:`,quizError);
-          await supabase.from('api_logs_74621').insert([{
-            operation: 'quiz_creation_error',
-            request_id: courseGenerationId,
-            error: quizError.message,
-            request_data: {
-              topic_title: topic.topicTitle,
-              topic_index: i
-            }
-          }]);
-        }
+try {
+// Determine quiz attachment based on LMS type
+const quizParentId=lmsService.getQuizAttachmentLevel()==='topic' ? topicId : (topic.lessons && topic.lessons.length > 0 ? topic.lessons[0].id : topicId);
 
-        // Generate Assignment
-        onTaskUpdate?.(completedTasks,`Creating assignment for topic: ${topic.topicTitle}`);
-        try {
-          const assignmentData=await generateAssignmentContent(apiKey,aggregatedLessonContent,abortSignal);
-          if (assignmentData) {
-            await createAssignment(topicId,assignmentData,lmsCredentials,abortSignal);
-            console.log(`Created assignment: ${assignmentData.title} for topic: ${topic.topicTitle}`);
+// Step 1: Create quiz shell
+const quizResponse=await lmsService.createQuiz(topic,quizParentId,abortSignal);
+const quizId=quizResponse.data.data;
+console.log(`Created quiz with ID: ${quizId} for topic: ${topic.topicTitle} using ${lmsService.getLMSType()}`);
 
-            if (assignmentData.tokenUsage) {
-              courseTokenUsage.prompt_tokens +=assignmentData.tokenUsage.prompt_tokens || 0;
-              courseTokenUsage.completion_tokens +=assignmentData.tokenUsage.completion_tokens || 0;
-              courseTokenUsage.total_tokens +=assignmentData.tokenUsage.total_tokens || 0;
-            }
-          }
-          completedTasks++;
-        } catch (assignmentError) {
-          console.error(`Error creating assignment for topic ${topic.topicTitle}:`,assignmentError);
-          await supabase.from('api_logs_74621').insert([{
-            operation: 'assignment_creation_error',
-            request_id: courseGenerationId,
-            error: assignmentError.message,
-            request_data: {
-              topic_title: topic.topicTitle,
-              topic_index: i
-            }
-          }]);
-        }
-      }
-    }
+completedTasks++;
 
-    try {
-      await supabase.from('courses')
-        .update({
-          input_tokens: courseTokenUsage.prompt_tokens,
-          output_tokens: courseTokenUsage.completion_tokens,
-          total_tokens: courseTokenUsage.total_tokens,
-          status: 'completed',
-          updated_at: new Date().toISOString()
-        })
-        .eq('wordpress_course_id',lmsData.courseId);
+// Step 2: Generate and add questions
+onTaskUpdate?.(completedTasks,`Generating quiz questions for: ${topic.topicTitle}`);
 
-      console.log('Course token usage updated in Supabase');
-      await clearRecoveryState(courseId);
-    } catch (updateError) {
-      console.error('Failed to update course token usage in Supabase:',updateError);
-    }
+const questionsData=await generateQuizQuestions(apiKey,aggregatedLessonContent,abortSignal);
 
-    return {
-      success: true,
-      courseId: lmsData?.courseId,
-      tokenUsage: courseTokenUsage
-    };
-  } catch (error) {
-    console.error('Error generating course content:',error);
-    throw error;
-  }
+if (questionsData && Array.isArray(questionsData)) {
+for (const questionData of questionsData) {
+let formattedQuestionData;
+
+if (questionData.question_type==='fill_in_the_blank') {
+formattedQuestionData={
+question_title: "Fill up the gaps",
+question_type: "fill_in_the_blank",
+question: questionData.question,
+correct_answer: questionData.correct_answer_fill
+};
+} else if (questionData.question_type==='single_choice') {
+formattedQuestionData={
+question_title: questionData.question_title,
+question_type: "single_choice",
+options: questionData.options,
+correct_answer: Array.isArray(questionData.correct_answer) ? questionData.correct_answer[0] : questionData.correct_answer
+};
+} else {
+// multiple_choice
+formattedQuestionData={
+question_title: questionData.question_title,
+question_type: "multiple_choice",
+options: questionData.options,
+correct_answer: Array.isArray(questionData.correct_answer) ? questionData.correct_answer : [questionData.correct_answer]
+};
+}
+
+try {
+await lmsService.createQuizQuestion(quizId,formattedQuestionData,abortSignal);
+console.log(`Added question: ${formattedQuestionData.question_title} using ${lmsService.getLMSType()}`);
+} catch (questionError) {
+console.error(`Error adding quiz question:`,questionError);
+}
+}
+}
+
+if (questionsData && questionsData.tokenUsage) {
+courseTokenUsage.prompt_tokens +=questionsData.tokenUsage.prompt_tokens || 0;
+courseTokenUsage.completion_tokens +=questionsData.tokenUsage.completion_tokens || 0;
+courseTokenUsage.total_tokens +=questionsData.tokenUsage.total_tokens || 0;
+}
+
+completedTasks++;
+} catch (quizError) {
+console.error(`Error creating quiz for topic ${topic.topicTitle}:`,quizError);
+await supabase.from('api_logs_74621').insert([{
+operation: 'quiz_creation_error',
+request_id: courseGenerationId,
+error: quizError.message,
+request_data: {
+topic_title: topic.topicTitle,
+topic_index: i,
+lms_type: lmsService.getLMSType()
+}
+}]);
+}
+
+// ✅ Generate Assignment (only for LMS types that support it)
+if (lmsService.supportsAssignments()) {
+onTaskUpdate?.(completedTasks,`Creating assignment for topic: ${topic.topicTitle}`);
+
+try {
+const assignmentData=await generateAssignmentContent(apiKey,aggregatedLessonContent,abortSignal);
+
+if (assignmentData) {
+await lmsService.createAssignment(topicId,assignmentData,abortSignal);
+console.log(`Created assignment: ${assignmentData.title} for topic: ${topic.topicTitle} using ${lmsService.getLMSType()}`);
+
+if (assignmentData.tokenUsage) {
+courseTokenUsage.prompt_tokens +=assignmentData.tokenUsage.prompt_tokens || 0;
+courseTokenUsage.completion_tokens +=assignmentData.tokenUsage.completion_tokens || 0;
+courseTokenUsage.total_tokens +=assignmentData.tokenUsage.total_tokens || 0;
+}
+}
+
+completedTasks++;
+} catch (assignmentError) {
+console.error(`Error creating assignment for topic ${topic.topicTitle}:`,assignmentError);
+await supabase.from('api_logs_74621').insert([{
+operation: 'assignment_creation_error',
+request_id: courseGenerationId,
+error: assignmentError.message,
+request_data: {
+topic_title: topic.topicTitle,
+topic_index: i,
+lms_type: lmsService.getLMSType()
+}
+}]);
+}
+} else {
+console.log(`⏭️ Skipping assignment creation for ${lmsService.getLMSType()} (not supported)`);
+completedTasks++;// Still increment to maintain progress consistency
+}
+}
+}
+
+// ✅ NEW: Post course data to AITable if enabled and validated
+if (aitableValidated && aitableConfig) {
+onProgress?.(95,'Posting course data to AITable...','aitable_posting');
+
+try {
+console.log('📤 Posting course data to AITable...');
+
+// Generate lesson slides JSON
+allLessonSlides=generateLessonSlidesJson(course,allSlidesData);
+
+// Prepare course data for AITable
+const courseData={
+programTitle: programContext.niche || course.programTitle || 'AI Generated Program',
+courseTitle: course.courseTitle,
+topicLessonStructure: generateTopicLessonStructure(course),
+creationDate: Date.now(),
+target: 'Option A',// Default target
+courseUniqueId: generateCourseUniqueId(lmsData.courseId,Date.now()),
+lessonSlidesJson: allLessonSlides
+};
+
+const aitableResult=await postCourseToAITable(
+aitableConfig.apiKey,
+aitableConfig.datasheetId,
+courseData
+);
+
+if (aitableResult.success) {
+console.log('✅ Course data successfully posted to AITable');
+await supabase.from('api_logs_74621').insert([{
+operation: 'aitable_post_success',
+request_id: courseGenerationId,
+request_data: {
+course_unique_id: courseData.courseUniqueId,
+record_id: aitableResult.recordId
+}
+}]);
+} else {
+console.warn('⚠️ Failed to post course data to AITable:',aitableResult.error);
+await supabase.from('api_logs_74621').insert([{
+operation: 'aitable_post_error',
+request_id: courseGenerationId,
+error: aitableResult.error,
+request_data: {
+course_unique_id: courseData.courseUniqueId
+}
+}]);
+}
+
+} catch (aitableError) {
+console.error('❌ Error posting to AITable:',aitableError);
+await supabase.from('api_logs_74621').insert([{
+operation: 'aitable_post_error',
+request_id: courseGenerationId,
+error: aitableError.message
+}]);
+// Don't fail the entire process if AITable posting fails
+}
+}
+
+try {
+await supabase.from('courses')
+.update({
+input_tokens: courseTokenUsage.prompt_tokens,
+output_tokens: courseTokenUsage.completion_tokens,
+total_tokens: courseTokenUsage.total_tokens,
+status: 'completed',
+updated_at: new Date().toISOString(),
+lms_type: lmsService.getLMSType()
+})
+.eq('wordpress_course_id',lmsData.courseId);
+
+console.log('Course token usage updated in Supabase');
+await clearRecoveryState(courseId);
+} catch (updateError) {
+console.error('Failed to update course token usage in Supabase:',updateError);
+}
+
+console.log(`🎉 Course generation completed successfully using ${lmsService.getLMSType()} LMS with enhanced design parameters${aitableValidated ? ' and AITable integration' : ''}!`);
+
+return {
+success: true,
+courseId: lmsData?.courseId,
+tokenUsage: courseTokenUsage,
+lmsType: lmsService.getLMSType(),
+aitablePosted: aitableValidated // ✅ NEW: Indicate if AITable posting was attempted
+};
+
+} catch (error) {
+console.error('Error generating course content:',error);
+throw error;
+}
 };
 
 // Generate topic and lesson structure for a course
 export const generateCourseTopicsAndLessons=async (course,programContext,summaryProgramContext,mustHaveAspects,designConsiderations,apiKey)=> {
-  try {
-    console.log(`Generating detailed topics and lessons for course: ${course.courseTitle}`);
+try {
+console.log(`Generating detailed topics and lessons for course: ${course.courseTitle}`);
 
-    const topicGenerationPrompt=`
+const topicGenerationPrompt=`
 GENERATE DETAILED COURSE OUTLINE BASED ON CONTEXT:
 
 Act as an expert curriculum architect. You are designing one course within a larger MicroMasters program. Your task is to create the complete,detailed curriculum map for this single course.
 
 ### CONTEXT ###
 Overall Context: ${summaryProgramContext}
+
 - Current Course being designed: ${course.courseTitle}
 - Course's Role in Program,Learning objectives and Course description: ${course.courseDescription}
 
@@ -1900,56 +1675,57 @@ CRITICAL REQUIREMENTS:
 
 The JSON object must have this exact structure:
 {
-  "topics": [
-    {
-      "id": "topic-new-1",
-      "topicTitle": "Comprehensive topic title with clear learning focus",
-      "topicLearningObjectiveDescription": "Detailed 2-3 sentence paragraph explaining what students will master in this topic,including specific skills and knowledge outcomes",
-      "additionalContext": "",
-      "lessons": [
-        {
-          "id": "lesson-new-1-1",
-          "lessonTitle": "Specific and actionable lesson title",
-          "lessonDescription": "Comprehensive 150-200 word description covering: (1) specific learning objectives for this lesson,(2) key concepts and skills students will learn,(3) practical activities and exercises they will complete,(4) real-world applications and examples,(5) how this lesson contributes to the overall topic mastery,and (6) expected outcomes and deliverables. Be specific about what students will be able to do after completing this lesson.",
-          "additionalContext": ""
-        }
-      ]
-    }
-  ]
+"topics": [
+{
+"id": "topic-new-1",
+"topicTitle": "Comprehensive topic title with clear learning focus",
+"topicLearningObjectiveDescription": "Detailed 2-3 sentence paragraph explaining what students will master in this topic,including specific skills and knowledge outcomes",
+"additionalContext": "",
+"lessons": [
+{
+"id": "lesson-new-1-1",
+"lessonTitle": "Specific and actionable lesson title",
+"lessonDescription": "Comprehensive 150-200 word description covering: (1) specific learning objectives for this lesson,(2) key concepts and skills students will learn,(3) practical activities and exercises they will complete,(4) real-world applications and examples,(5) how this lesson contributes to the overall topic mastery,and (6) expected outcomes and deliverables. Be specific about what students will be able to do after completing this lesson.",
+"additionalContext": ""
+}
+]
+}
+]
 }
 
 Generate exactly 5-6 topics with 4-5 lessons each. Each lesson description must be detailed and comprehensive (150-200 words).
-    `;
+`;
 
-    const response=await axios.post(
-      'https://api.openai.com/v1/chat/completions',
-      {
-        model: "gpt-4.1-mini-2025-04-14",
-        messages: [
-          {role: "system",content: "You are an expert instructional designer specializing in professional education. Create detailed,practical course content with comprehensive lesson descriptions. Each lesson must be unique,specific,and tailored to the course context."},
-          {role: "user",content: topicGenerationPrompt}
-        ],
-        temperature: 0.7
-      },
-      {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        }
-      }
-    );
+const response=await axios.post(
+'https://api.openai.com/v1/chat/completions',
+{
+model: "gpt-4.1-mini-2025-04-14",
+messages: [
+{role: "system",content: "You are an expert instructional designer specializing in professional education. Create detailed,practical course content with comprehensive lesson descriptions. Each lesson must be unique,specific,and tailored to the course context."},
+{role: "user",content: topicGenerationPrompt}
+],
+temperature: 0.7
+},
+{
+headers: {
+'Content-Type': 'application/json',
+'Authorization': `Bearer ${apiKey}`
+}
+}
+);
 
-    const content=response.data.choices[0].message.content;
-    const jsonMatch=content.match(/```json\n([\s\S]*?)\n```/) || content.match(/{[\s\S]*}/);
-    
-    if (jsonMatch) {
-      const jsonString=jsonMatch[1] || jsonMatch[0];
-      return JSON.parse(jsonString);
-    }
+const content=response.data.choices[0].message.content;
+const jsonMatch=content.match(/```json\n([\s\S]*?)\n```/) || content.match(/{[\s\S]*}/);
 
-    return JSON.parse(content);
-  } catch (error) {
-    console.error("Error generating topics and lessons:",error);
-    return {topics: []};
-  }
+if (jsonMatch) {
+const jsonString=jsonMatch[1] || jsonMatch[0];
+return JSON.parse(jsonString);
+}
+
+return JSON.parse(content);
+
+} catch (error) {
+console.error("Error generating topics and lessons:",error);
+return {topics: []};
+}
 };

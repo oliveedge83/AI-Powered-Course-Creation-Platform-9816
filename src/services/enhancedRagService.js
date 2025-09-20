@@ -307,7 +307,7 @@ Tone: Professional, engaging, and practical - similar to Malcolm Gladwell or Dan
 Audience: ${audienceContext}`;
 
     // Enhanced user prompt for Stage 2 with parameter integration
-    const userPrompt = `Generate comprehensive lesson content (2000-2500 words in HTML) for:
+    const userPrompt = `Generate comprehensive lesson content (2500-3000 words in HTML) for:
 
 **LESSON:** "${lessonData.lessonTitle}"
 **LESSON DESCRIPTION:** "${lessonData.lessonDescription}"
@@ -333,8 +333,9 @@ ${parameterInstructions}
 - Generate 2000-2500 words in clean, semantic HTML format
 - Use proper HTML structure: <h1>, <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>
 - Include CSS classes for styling: highlight-box, warning-box, success-box, case-study
-- Structure with clear sections: Overview, Main Content (including subsection wise break down as relevant), Brief Key Takeaways, Brief Common Misconceptions, Brief Practical Application
-- Include a brief case study if specifically requested in the additional context (increase word limit to 3000 if including case study)
+- Structure with clear sections: Overview, Main Content (including subsection wise break down as relevant), Brief Key Takeaways, Brief Common Misconceptions, Brief Practical Application. Main Content should be more than 80% of the text with the rest limited to less than 20% of the total.
+-For exhaustiveness and content clarity, Clearly divide Main Content into at least three subsections each with a clear subtitles based on the context and generate the relevant content for each of the three or more subsections. 
+- Include a brief case study if specifically requested in the additional context (increase word limit to 3500 or above increasing by 600 words if including a case study)
 - Apply the instructional design parameters consistently throughout all sections
 - Prioritize current industry insights from web research for examples and trends
 - Use reference library content generated through file_search for authoritative backing and detailed explanations
@@ -346,12 +347,12 @@ ${parameterInstructions}
   
   <div class="lesson-overview">
     <h2>Overview</h2>
-    <p>[Brief lesson overview integrating current trends and instructional approach]</p>
+    <p>[Brief lesson overview integrating current trends and instructional approach. The word count for the main content should be less than 5% of the total word count for the lesson]</p>
   </div>
   
   <div class="main-content">
     <h2>[Main Section Title]</h2>
-    <p>[Content with current examples and authoritative backing including relevant subsections]</p>
+    <p>[Content with current examples and authoritative backing including relevant subsections. This shouldbe divided into three or more subsections with clear subtitles in h3 formatting and the contents below. The word count for the main content should be around 80% of the total word count for the lesson]</p>
     
     <div class="highlight-box">
       <h4>Key Insight</h4>
@@ -419,8 +420,8 @@ Generate the complete HTML lesson content now.`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        max_tokens: 2500,
-        temperature: 0.7
+        max_tokens: 4500,
+        temperature: 0.6
       },
       {
         headers: {

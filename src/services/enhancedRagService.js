@@ -307,7 +307,7 @@ Tone: Professional, engaging, and practical - similar to Malcolm Gladwell or Dan
 Audience: ${audienceContext}`;
 
     // Enhanced user prompt for Stage 2 with parameter integration
-    const userPrompt = `Generate comprehensive lesson content (2500-3000 words in HTML) for:
+    const userPrompt = `Generate comprehensive lesson content (4000-4500 words in HTML) for:
 
 **LESSON:** "${lessonData.lessonTitle}"
 **LESSON DESCRIPTION:** "${lessonData.lessonDescription}"
@@ -330,12 +330,12 @@ Design Considerations: ${designConsiderations}
 ${parameterInstructions}
 
 **CONTENT REQUIREMENTS:**
-- Generate 2000-2500 words in clean, semantic HTML format
+- Generate 4000-4500 words in clean, semantic HTML format
 - Use proper HTML structure: <h1>, <h2>, <h3>, <p>, <ul>, <ol>, <li>, <strong>, <em>
 - Include CSS classes for styling: highlight-box, warning-box, success-box, case-study
-- Structure with clear sections: Overview, Main Content (including subsection wise break down as relevant), Brief Key Takeaways, Brief Common Misconceptions, Brief Practical Application. Main Content should be more than 80% of the text with the rest limited to less than 20% of the total.
+- Structure with clear sections: Brief Overview (5% ~200 words), Main Content (80% ~3200-3600 words), Brief Key Takeaways (5% ~200 words), Brief Common Misconceptions (5% ~200 words), Brief Practical Application (5% ~200 words).
 -For exhaustiveness and content clarity, Clearly divide Main Content into at least three subsections each with a clear subtitles based on the context and generate the relevant content for each of the three or more subsections. 
-- Include a brief case study if specifically requested in the additional context (increase word limit to 3500 or above increasing by 600 words if including a case study)
+- Include a brief case study if specifically requested in the additional context (Case study adds 1000+ words and increases total target to 5000-5500 words)
 - Apply the instructional design parameters consistently throughout all sections
 - Prioritize current industry insights from web research for examples and trends
 - Use reference library content generated through file_search for authoritative backing and detailed explanations
@@ -420,7 +420,7 @@ Generate the complete HTML lesson content now.`;
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt }
         ],
-        max_tokens: 4500,
+        max_tokens: 6500,
         temperature: 0.6
       },
       {

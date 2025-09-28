@@ -82,7 +82,7 @@ export const generateCourseContext = async (programData, validationResults, useP
       response = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         {
-          model: "gpt-4o-mini",
+          model: "gpt-4.1-mini-2025-04-14",
           messages: [
             {
               role: "system",
@@ -285,7 +285,7 @@ export const generateProgramStructure = async (programData, validationResults, u
       response = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         {
-          model: "gpt-4o-mini",
+          model: "gpt-4.1-mini-2025-04-14",
           messages: [
             {
               role: "system",
@@ -514,7 +514,7 @@ export const generateCourseTopicsAndLessons = async (course, programContext, sum
       response = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         {
-          model: "gpt-4o-mini",
+          model: "gpt-4.1-mini-2025-04-14",
           messages: [
             {
               role: "system",

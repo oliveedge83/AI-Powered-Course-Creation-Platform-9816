@@ -1,24 +1,23 @@
 import axios from 'axios';
-import {validateOpenAIKey} from './apiKeyValidator';
-import {generateIndustryResearch,callPerplexityAPI} from './perplexityService';
-import {getBestApiKey,getPerplexityApiKey} from './enhancedApiKeyValidator';
+import { validateOpenAIKey } from './apiKeyValidator';
+import { generateIndustryResearch, callPerplexityAPI } from './perplexityService';
+import { getBestApiKey, getPerplexityApiKey } from './enhancedApiKeyValidator';
+import { applyNumberingToProgram } from './numberingService';
 
-// Function to generate comprehensive course context with enhanced research
+// ✅ UPDATED: Function to generate comprehensive course context, now outputting a structured JSON string
 export const generateCourseContext = async (programData, validationResults, usePerplexityResearch = true) => {
   try {
     console.log("Starting enhanced course context generation...");
-    
     // Get the best API key for content generation
     const bestApiKey = getBestApiKey(validationResults);
     if (!bestApiKey) {
       throw new Error('No valid API keys available for content generation');
     }
-    
     console.log(`Using ${bestApiKey.provider} API for content generation: ${bestApiKey.label}`);
-    
+
     let industryResearch = '';
     let researchCitations = [];
-    
+
     // Use Perplexity for industry research if available and requested
     if (usePerplexityResearch) {
       const perplexityKey = getPerplexityApiKey(validationResults);
@@ -43,7 +42,7 @@ export const generateCourseContext = async (programData, validationResults, useP
       }
     }
 
-    // Generate enhanced research prompt
+    // ✅ NEW: Generate enhanced research prompt that explicitly requests a JSON object
     const researchPrompt = `
       Act as a senior academic strategist and career analyst for a top-tier university. I am developing a new MicroMasters program in the professional niche of: ${programData.niche}.
 
@@ -51,29 +50,27 @@ export const generateCourseContext = async (programData, validationResults, useP
       Must Have aspect: ${programData.mustHaveAspects}
       Additional design considerations: ${programData.designConsiderations || 'None specified'}
 
-      ${industryResearch ? `
-      CURRENT INDUSTRY RESEARCH AND TRENDS:
+      ${industryResearch ? `CURRENT INDUSTRY RESEARCH AND TRENDS:
       ${industryResearch}
-      
       Please integrate this real-time industry data into your analysis and recommendations.
       ` : ''}
 
-      Your mission is to uncover the most potent professional and emotional drivers, targeted business outcomes of the target audience for this program. This deep insight will inform the program's content and curriculum design to ensure maximum business impact and results for the participants.
+      Your mission is to generate a comprehensive analysis that will inform the program's curriculum design.
 
-      The final output MUST be a single text paragraph string titled "course context".
+      CRITICAL: Your final output MUST be a single, valid JSON object and nothing else. It must start with { and end with }. Do not include any explanatory text, markdown code blocks (like \`\`\`json), or any other characters before or after the JSON object.
 
-      Course Context will include:
-      - "programTitle": A prestigious and descriptive title for the MicroMasters program.
-      - "programLevelOutcomes": A numbered list (paragraph, not array) of 4-6 high-level outcomes a student will achieve.
-      - "targetAudience": A detailed description of the ideal profile for this program.
-      - "industryRelevance": A brief analysis of why this program is currently relevant, citing industry trends and PESTEL analysis of key industry drivers. ${industryResearch ? 'Use the provided current industry research to enhance this section.' : ''} Generated as a numbered text paragraph of few bullet points (not array)
-      - "hardHittingPainPoints": An array of the most significant anxieties, frustrations, or roadblocks for practitioners in this niche face. ${industryResearch ? 'Include current market challenges from the research data.' : ''} Generated as a numbered text paragraph of few bullet points (not array)
-      - "keyEmotionalTriggers": An array of the deep-seated emotional drivers for actionable results in this field. Generated as a numbered text paragraph of few bullet points (not array)
-      - "mostImpactfulOutcomes": An array of the most powerful results and business outcomes practitioners are aiming at. These should be practical and tangible real business outcomes. ${industryResearch ? 'Include current market opportunities from the research.' : ''} Generated as a numbered text paragraph of few bullet points (not array)
-      - "foundationalKnowledge": A description of the prerequisite knowledge or experience a student should have.
-      - "instructionalDesignFramework": Recommend a framework suitable for a multi-course, advanced program.
-
-      Generate the "course context" paragraph now. The output should be strictly a text paragraph with numbered list of parameters that can be passed on to the next node.
+      The JSON object must have the following structure, with each value being a string:
+      {
+        "programTitle": "A prestigious and descriptive title for the MicroMasters program.",
+        "programLevelOutcomes": "A numbered list (as a single string, use '\\n' for new lines) of 4-6 high-level outcomes a student will achieve.",
+        "targetAudience": "A detailed description of the ideal profile for this program.",
+        "industryRelevance": "A brief analysis of why this program is currently relevant, citing industry trends and PESTEL analysis of key industry drivers. (as a single string with numbered points)",
+        "hardHittingPainPoints": "A numbered list (as a single string, use '\\n' for new lines) of the most significant anxieties, frustrations, or roadblocks for practitioners in this niche.",
+        "keyEmotionalTriggers": "A numbered list (as a single string, use '\\n' for new lines) of the deep-seated emotional drivers for actionable results in this field.",
+        "mostImpactfulOutcomes": "A numbered list (as a single string, use '\\n' for new lines) of the most powerful results and business outcomes practitioners are aiming at.",
+        "foundationalKnowledge": "A description of the prerequisite knowledge or experience a student should have.",
+        "instructionalDesignFramework": "Recommend a framework suitable for a multi-course, advanced program."
+      }
     `;
 
     // Use the appropriate API based on the best available key
@@ -84,23 +81,12 @@ export const generateCourseContext = async (programData, validationResults, useP
         {
           model: "gpt-4.1-mini-2025-04-14",
           messages: [
-            {
-              role: "system",
-              content: "You are a senior academic strategist and career analyst with deep expertise in curriculum design and industry analysis. You excel at integrating current market research and trends into educational program design."
-            },
-            {
-              role: "user",
-              content: researchPrompt
-            }
+            { role: "system", content: "You are a senior academic strategist and career analyst with deep expertise in curriculum design and industry analysis. You excel at integrating current market research and trends into educational program design. YOU MUST ONLY OUTPUT A VALID JSON OBJECT." },
+            { role: "user", content: researchPrompt }
           ],
-          temperature: 0.7
+          temperature: 0.6
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${bestApiKey.key}`
-          }
-        }
+        { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bestApiKey.key}` } }
       );
     } else if (bestApiKey.provider === 'perplexity') {
       response = await axios.post(
@@ -108,40 +94,46 @@ export const generateCourseContext = async (programData, validationResults, useP
         {
           model: "sonar-pro",
           messages: [
-            {
-              role: "user",
-              content: `As a senior academic strategist and career analyst with deep expertise in curriculum design and industry analysis, ${researchPrompt}`
-            }
+            { role: "user", content: `As a senior academic strategist and career analyst with deep expertise in curriculum design and industry analysis, ${researchPrompt}` }
           ],
-          temperature: 0.7
+          temperature: 0.6
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${bestApiKey.key}`
-          }
-        }
+        { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bestApiKey.key}` } }
       );
     }
 
-    console.log("✅ Enhanced course context generated successfully");
-    return {
-      content: response.data.choices[0].message.content,
-      citations: researchCitations
-    };
-  } catch (error) {
-    console.error("❌ Error generating course context:", error);
-    
-    // Provide more specific error information
-    if (error.message.includes('No valid API keys')) {
-      throw error; // Re-throw validation errors
+    // ✅ NEW: Clean and validate the JSON response
+    const rawContent = response.data.choices[0].message.content;
+    let cleanContent = rawContent.trim();
+    const jsonStart = cleanContent.indexOf('{');
+    const jsonEnd = cleanContent.lastIndexOf('}');
+
+    if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
+      console.error("❌ No JSON found in context generation response:", cleanContent);
+      throw new Error('No valid JSON object found in AI response for course context.');
     }
 
-    // For other API errors, provide detailed information
+    const jsonString = cleanContent.substring(jsonStart, jsonEnd + 1);
+
+    // Validate JSON parsing
+    try {
+      JSON.parse(jsonString);
+      console.log("✅ Course context JSON is valid.");
+    } catch (parseError) {
+      console.error("❌ Course context JSON Parse Error:", parseError);
+      throw new Error(`Failed to parse course context as JSON: ${parseError.message}.`);
+    }
+
+    console.log("✅ Enhanced course context generated successfully as JSON");
+    return { content: jsonString, citations: researchCitations };
+  } catch (error) {
+    console.error("❌ Error generating course context:", error);
+    if (error.message.includes('No valid API keys')) {
+      throw error;
+    }
     if (error.response) {
       const status = error.response.status;
       const errorData = error.response.data;
-      
       if (status === 401) {
         throw new Error('API Authentication Failed: Invalid API key. Please check your API keys in settings.');
       } else if (status === 429) {
@@ -152,22 +144,20 @@ export const generateCourseContext = async (programData, validationResults, useP
         throw new Error(`API Error (${status}): ${errorData?.error?.message || 'Unknown API error'}`);
       }
     }
-
-    // Network or other errors
     throw new Error(`Failed to generate course context: ${error.message}. Please check your internet connection and API keys.`);
   }
 };
 
-// Function to generate program structure with enhanced research and Sonar-Pro support
+// ✅ UPDATED: Function to generate program structure with numbering system
 export const generateProgramStructure = async (programData, validationResults, usePerplexityResearch = true) => {
   try {
-    console.log("🚀 Starting enhanced program structure generation...");
+    console.log("🚀 Starting enhanced program structure generation with numbering system...");
     console.log("Program Data:", {
       niche: programData.niche,
       numberOfCourses: programData.numberOfCourses,
       useSonarProStructure: programData.useSonarProStructure
     });
-    
+
     // Determine which API to use based on useSonarProStructure flag
     let structureApiKey;
     if (programData.useSonarProStructure) {
@@ -190,7 +180,7 @@ export const generateProgramStructure = async (programData, validationResults, u
     // Step 1: Generate comprehensive course context with enhanced research
     console.log("📊 Generating course context...");
     const courseContextResult = await generateCourseContext(programData, validationResults, usePerplexityResearch);
-    const courseContext = courseContextResult.content;
+    const courseContext = courseContextResult.content; // This is now a JSON string
     const researchCitations = courseContextResult.citations || [];
     console.log("✅ Course context generated successfully");
 
@@ -199,8 +189,7 @@ export const generateProgramStructure = async (programData, validationResults, u
     const structurePrompt = `
       Based on the following comprehensive course context and program requirements, create a detailed MicroMasters program structure.
 
-      Course Context:
-      ${courseContext}
+      Course Context (as a JSON string): ${courseContext}
 
       Program Requirements:
       - Number of courses: ${programData.numberOfCourses}
@@ -219,7 +208,7 @@ export const generateProgramStructure = async (programData, validationResults, u
 
       Format your response as a JSON object with this exact structure:
       {
-        "programContext": "The full program context text here",
+        "programContext": "The full program context JSON string here",
         "summaryProgramContext": "A concise 2-3 sentence summary of the program context for use in subsequent content generation",
         "researchEnhanced": ${usePerplexityResearch},
         "usedSonarProStructure": ${programData.useSonarProStructure || false},
@@ -247,7 +236,7 @@ export const generateProgramStructure = async (programData, validationResults, u
           }
         ]
       }
-
+      
       ENSURE:
       - Include exactly 5-6 comprehensive topics per course
       - Include exactly 4-5 detailed lessons per topic
@@ -263,68 +252,40 @@ export const generateProgramStructure = async (programData, validationResults, u
     console.log("🤖 Making API call for structure generation...");
     let response;
     let structureCitations = [];
-
     if (programData.useSonarProStructure && structureApiKey.provider === 'perplexity') {
       // Use Perplexity Sonar-Pro with medium context and one month window
       response = await callPerplexityAPI(
         structureApiKey.key,
         `As an expert educational content designer specializing in professional MicroMasters programs, ${structurePrompt}`,
         'sonar-pro', // Use sonar-pro model
-        {
-          maxTokens: 2500, // 2500 token limit as requested
-          temperature: 0.7
-          // Note: Perplexity API doesn't have explicit context window settings like "medium" or "one month"
-          // but sonar-pro inherently uses recent web data
-        }
+        { maxTokens: 2500, temperature: 0.6 }
       );
-      
       // Extract citations if available
       structureCitations = response.citations || [];
-      
     } else if (structureApiKey.provider === 'openai') {
       response = await axios.post(
         'https://api.openai.com/v1/chat/completions',
         {
           model: "gpt-4.1-mini-2025-04-14",
           messages: [
-            {
-              role: "system",
-              content: "You are an expert educational content designer specializing in professional MicroMasters programs. Create comprehensive, industry-aligned curriculum structures with detailed content that reflects current market demands and trends. ALWAYS respond with ONLY a valid JSON object - no explanatory text."
-            },
-            {
-              role: "user",
-              content: structurePrompt
-            }
+            { role: "system", content: "You are an expert educational content designer specializing in professional MicroMasters programs. Create comprehensive, industry-aligned curriculum structures with detailed content that reflects current market demands and trends. ALWAYS respond with ONLY a valid JSON object - no explanatory text." },
+            { role: "user", content: structurePrompt }
           ],
-          temperature: 0.7
+          temperature: 0.6
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${structureApiKey.key}`
-          }
-        }
+        { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${structureApiKey.key}` } }
       );
-      
     } else if (structureApiKey.provider === 'perplexity') {
       response = await axios.post(
         'https://api.perplexity.ai/chat/completions',
         {
           model: "sonar-pro",
           messages: [
-            {
-              role: "user",
-              content: `As an expert educational content designer specializing in professional MicroMasters programs, ${structurePrompt}`
-            }
+            { role: "user", content: `As an expert educational content designer specializing in professional MicroMasters programs, ${structurePrompt}` }
           ],
-          temperature: 0.7
+          temperature: 0.6
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${structureApiKey.key}`
-          }
-        }
+        { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${structureApiKey.key}` } }
       );
     }
 
@@ -352,13 +313,12 @@ export const generateProgramStructure = async (programData, validationResults, u
     // Find the JSON object - look for the outermost braces
     const jsonStart = cleanContent.indexOf('{');
     const jsonEnd = cleanContent.lastIndexOf('}');
-
     if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
       console.error("❌ No JSON found in response:", cleanContent);
       throw new Error('No valid JSON object found in API response. The AI may have generated text instead of JSON.');
     }
-
     const jsonString = cleanContent.substring(jsonStart, jsonEnd + 1);
+
     console.log("🔧 Extracted JSON string length:", jsonString.length);
     console.log("🔍 JSON preview:", jsonString.substring(0, 200) + "...");
 
@@ -377,7 +337,6 @@ export const generateProgramStructure = async (programData, validationResults, u
       console.error("❌ Invalid structure - courses missing:", parsedData);
       throw new Error("Invalid program structure: missing or invalid courses array");
     }
-
     if (parsedData.courses.length === 0) {
       console.error("❌ No courses generated");
       throw new Error("No courses were generated. Please try again.");
@@ -390,7 +349,6 @@ export const generateProgramStructure = async (programData, validationResults, u
         console.error(`❌ Course ${i + 1} has no topics:`, course);
         throw new Error(`Course ${i + 1} (${course.courseTitle || 'Untitled'}) has no topics`);
       }
-      
       for (let j = 0; j < course.topics.length; j++) {
         const topic = course.topics[j];
         if (!topic.lessons || !Array.isArray(topic.lessons) || topic.lessons.length === 0) {
@@ -405,29 +363,26 @@ export const generateProgramStructure = async (programData, validationResults, u
     parsedData.structureCitations = structureCitations;
     parsedData.programContext = courseContext; // Ensure we have the full context
 
-    console.log(`🎉 Enhanced program structure generated successfully using ${programData.useSonarProStructure ? 'Sonar-Pro' : structureApiKey.provider}`);
-    console.log(`📊 Generated ${parsedData.courses.length} courses with ${parsedData.courses.reduce((total, course) => total + course.topics.length, 0)} total topics`);
-    
-    return parsedData;
+    // ✅ NEW: Apply numbering system to the generated program structure
+    console.log("🔢 Applying numbering system to program structure...");
+    const numberedProgramData = applyNumberingToProgram({ ...programData, ...parsedData });
 
+    console.log(`🎉 Enhanced program structure generated successfully using ${programData.useSonarProStructure ? 'Sonar-Pro' : structureApiKey.provider} with numbering system`);
+    console.log(`📊 Generated ${numberedProgramData.courses.length} courses with ${numberedProgramData.courses.reduce((total, course) => total + course.topics.length, 0)} total topics`);
+    console.log(`🔢 Program code: ${numberedProgramData.programCode}`);
+
+    return numberedProgramData;
   } catch (error) {
     console.error("❌ Error generating program structure:", error);
-    
-    // Don't fall back to mock data - throw the error so user knows what went wrong
     if (error.message.includes('No valid API keys')) {
-      throw error; // Re-throw validation errors
+      throw error;
     }
-
-    // For JSON parsing errors, provide more specific information
     if (error.message.includes('parse') || error.message.includes('JSON')) {
       throw new Error(`Failed to parse AI response: ${error.message}. The AI may have generated invalid JSON format. Please try again.`);
     }
-
-    // For other API errors, provide detailed information
     if (error.response) {
       const status = error.response.status;
       const errorData = error.response.data;
-      
       if (status === 401) {
         throw new Error('API Authentication Failed: Invalid API key. Please verify your API keys in settings and ensure they have the correct permissions.');
       } else if (status === 429) {
@@ -438,44 +393,42 @@ export const generateProgramStructure = async (programData, validationResults, u
         throw new Error(`API Error (${status}): ${errorData?.error?.message || 'Unknown API error occurred'}`);
       }
     }
-
-    // Network or parsing errors
     throw new Error(`Program structure generation failed: ${error.message}. Please check your internet connection and try again.`);
   }
 };
 
 // Enhanced topic and lesson generation for individual courses
-export const generateCourseTopicsAndLessons = async (course, programContext, summaryProgramContext, mustHaveAspects, designConsiderations, validationResults) => {
+export const generateCourseTopicsAndLessons = async (
+  course,
+  programContext,
+  summaryProgramContext,
+  mustHaveAspects,
+  designConsiderations,
+  validationResults
+) => {
   try {
     console.log(`Generating enhanced topics and lessons for course: ${course.courseTitle}`);
-    
     // Get the best API key for content generation
     const bestApiKey = getBestApiKey(validationResults);
     if (!bestApiKey) {
       throw new Error('No valid API keys available for course generation');
     }
-    
     console.log("✅ Using validated API key for course regeneration...");
-    
+
     const topicGenerationPrompt = `
       GENERATE DETAILED COURSE OUTLINE BASED ON CONTEXT:
-      
-      Act as an expert curriculum architect. You are designing one course within a larger MicroMasters program.
-      Your task is to create the complete, detailed curriculum map for this single course.
-      
+      Act as an expert curriculum architect. You are designing one course within a larger MicroMasters program. Your task is to create the complete, detailed curriculum map for this single course.
+
       ### CONTEXT ###
       Overall Context: ${summaryProgramContext}
-      
       - Current Course being designed: ${course.courseTitle}
       - Course's Role in Program, Learning objectives and Course description: ${course.courseDescription}
-      
       Must Have aspects in the course: ${mustHaveAspects}
       Other Design Considerations: ${designConsiderations}
-      
+
       ### TASK ###
-      Given the above context, Generate the complete curriculum map for ONLY the course specified above.
-      Your output MUST be a single raw JSON object.
-      
+      Given the above context, Generate the complete curriculum map for ONLY the course specified above. Your output MUST be a single raw JSON object.
+
       CRITICAL REQUIREMENTS:
       - Generate exactly 5-6 comprehensive topics for this course
       - Each topic MUST have exactly 4-5 detailed lessons
@@ -485,7 +438,7 @@ export const generateCourseTopicsAndLessons = async (course, programContext, sum
       - Each topic and lesson must have unique, relevant titles and descriptions
       - No generic placeholder content - everything must be specific to this course
       - Integrate current industry trends and best practices
-      
+
       The JSON object must have this exact structure:
       {
         "topics": [
@@ -505,10 +458,9 @@ export const generateCourseTopicsAndLessons = async (course, programContext, sum
           }
         ]
       }
-      
+
       Generate exactly 5-6 topics with 4-5 lessons each. Each lesson description must be detailed and comprehensive (150-200 words).
     `;
-    
     let response;
     if (bestApiKey.provider === 'openai') {
       response = await axios.post(
@@ -516,23 +468,12 @@ export const generateCourseTopicsAndLessons = async (course, programContext, sum
         {
           model: "gpt-4.1-mini-2025-04-14",
           messages: [
-            {
-              role: "system",
-              content: "You are an expert instructional designer specializing in professional education. Create detailed, practical course content with comprehensive lesson descriptions. Each lesson must be unique, specific, and tailored to the course context with current industry relevance."
-            },
-            {
-              role: "user",
-              content: topicGenerationPrompt
-            }
+            { role: "system", content: "You are an expert instructional designer specializing in professional education. Create detailed, practical course content with comprehensive lesson descriptions. Each lesson must be unique, specific, and tailored to the course context with current industry relevance." },
+            { role: "user", content: topicGenerationPrompt }
           ],
-          temperature: 0.7
+          temperature: 0.5
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${bestApiKey.key}`
-          }
-        }
+        { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bestApiKey.key}` } }
       );
     } else if (bestApiKey.provider === 'perplexity') {
       response = await axios.post(
@@ -540,24 +481,15 @@ export const generateCourseTopicsAndLessons = async (course, programContext, sum
         {
           model: "sonar-pro",
           messages: [
-            {
-              role: "user",
-              content: `As an expert instructional designer specializing in professional education, ${topicGenerationPrompt}`
-            }
+            { role: "user", content: `As an expert instructional designer specializing in professional education, ${topicGenerationPrompt}` }
           ],
-          temperature: 0.7
+          temperature: 0.5
         },
-        {
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${bestApiKey.key}`
-          }
-        }
+        { headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${bestApiKey.key}` } }
       );
     }
-    
+
     const content = response.data.choices[0].message.content;
-    
     const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/{[\s\S]*}/);
     if (jsonMatch) {
       const jsonString = jsonMatch[1] || jsonMatch[0];
@@ -565,23 +497,17 @@ export const generateCourseTopicsAndLessons = async (course, programContext, sum
       console.log("✅ Enhanced topics and lessons generated successfully");
       return result;
     }
-    
     const result = JSON.parse(content);
     console.log("✅ Enhanced topics and lessons generated successfully");
     return result;
-    
   } catch (error) {
     console.error("❌ Error generating topics and lessons:", error);
-    
     if (error.message.includes('No valid API keys')) {
-      throw error; // Re-throw validation errors
+      throw error;
     }
-    
-    // For other API errors, provide detailed information
     if (error.response) {
       const status = error.response.status;
       const errorData = error.response.data;
-      
       if (status === 401) {
         throw new Error('API Authentication Failed: Invalid API key. Please check your API key settings.');
       } else if (status === 429) {
@@ -590,7 +516,6 @@ export const generateCourseTopicsAndLessons = async (course, programContext, sum
         throw new Error(`API Error (${status}): ${errorData?.error?.message || 'Unknown API error'}`);
       }
     }
-    
     throw new Error(`Failed to generate course topics and lessons: ${error.message}`);
   }
 };

@@ -4,9 +4,9 @@ import {generateParameterInstructions} from './instructionalParameterService';
 
 /**
  * Enhanced token tracking utility
- */
-const TokenTracker = {
-  createSession: (lessonTitle) => ({
+ */ 
+const TokenTracker={
+  createSession: (lessonTitle)=> ({
     lessonTitle,
     stage1: {
       prompt_tokens: 0,
@@ -44,7 +44,7 @@ const TokenTracker = {
     }
   }),
 
-  logTokenUsage: (session) => {
+  logTokenUsage: (session)=> {
     console.log(`
 ╔══════════════════════════════════════════════════════════════════════════════════
 ║ 📊 DETAILED TOKEN USAGE REPORT FOR LESSON: ${session.lessonTitle}
@@ -92,7 +92,7 @@ const TokenTracker = {
     `);
   },
 
-  calculateTotals: (session) => {
+  calculateTotals: (session)=> {
     // ✅ UPDATED: Include subsection generation in totals
     session.totals.input_tokens = session.stage1.prompt_tokens + session.stage2.prompt_tokens + session.webSearch.prompt_tokens + session.subsectionGeneration.prompt_tokens;
     session.totals.output_tokens = session.stage1.completion_tokens + session.stage2.completion_tokens + session.webSearch.completion_tokens + session.subsectionGeneration.completion_tokens;
@@ -104,23 +104,23 @@ const TokenTracker = {
 /**
  * ✅ NEW: Generate dynamic subsections based on lesson context
  * This function creates contextually relevant subsection titles before main content generation
- */
-const generateDynamicSubsections = async (
+ */ 
+const generateDynamicSubsections=async (
   apiKey,
   lessonData,
   topicData,
-  ragContent = '',
-  webSearchContext = '',
-  courseContext = '',
-  designParameters = {},
+  ragContent='',
+  webSearchContext='',
+  courseContext='',
+  designParameters={},
   tokenSession,
-  abortSignal = null
-) => {
+  abortSignal=null
+)=> {
   try {
     console.log(`📋 Generating dynamic subsections for lesson: ${lessonData.lessonTitle}`);
-    
+
     // Create context-aware subsection generation prompt
-    const subsectionPrompt = `Based on the lesson "${lessonData.lessonTitle}" and the provided context, generate exactly 4 main subsection titles for the main content section.
+    const subsectionPrompt=`Based on the lesson "${lessonData.lessonTitle}" and the provided context, generate exactly 4 main subsection titles for the main content section.
 
 LESSON DETAILS:
 - Title: ${lessonData.lessonTitle}
@@ -128,9 +128,9 @@ LESSON DETAILS:
 - Topic: ${topicData.topicTitle}
 
 AVAILABLE CONTEXT:
-${webSearchContext ? `CURRENT WEB RESEARCH (Priority 1): ${webSearchContext.substring(0, 500)}...` : ''}
-${ragContent ? `REFERENCE MATERIALS (Priority 2): ${ragContent.substring(0, 500)}...` : ''}
-${courseContext ? `COURSE CONTEXT (Priority 3): ${courseContext.substring(0, 300)}...` : ''}
+${webSearchContext ? `CURRENT WEB RESEARCH (Priority 1): ${webSearchContext.substring(0,500)}...` : ''}
+${ragContent ? `REFERENCE MATERIALS (Priority 2): ${ragContent.substring(0,500)}...` : ''}
+${courseContext ? `COURSE CONTEXT (Priority 3): ${courseContext.substring(0,300)}...` : ''}
 
 DESIGN APPROACH:
 ${Object.keys(designParameters).length > 0 ? `
@@ -177,7 +177,7 @@ Example format:
           }
         ],
         max_tokens: 150, // ✅ Small token limit for just 4 subsection titles
-        temperature: 0.7
+        temperature: 0.6 // ✅ UPDATED: Default temperature
       },
       {
         headers: {
@@ -190,9 +190,8 @@ Example format:
     );
 
     console.log(`✅ Subsection generation API call successful!`);
-
     const content = response.data.choices[0].message.content.trim();
-    
+
     // Update token tracking with actual usage
     if (response.data.usage) {
       tokenSession.subsectionGeneration.prompt_tokens = response.data.usage.prompt_tokens;
@@ -215,7 +214,7 @@ Example format:
       } else {
         subsections = JSON.parse(content);
       }
-      
+
       // Validate that we have exactly 4 subsections
       if (!Array.isArray(subsections) || subsections.length !== 4) {
         throw new Error('Invalid subsection format');
@@ -241,7 +240,6 @@ Example format:
 
   } catch (error) {
     console.error('❌ Error generating dynamic subsections:', error);
-    
     // Fallback to default subsections if API call fails
     console.log('🔄 Using fallback subsections due to API error');
     return [
@@ -257,24 +255,24 @@ Example format:
  * Stage 1: Simple RAG Call using OpenAI Responses API
  * Generates domain-specific content from vector store files
  * Returns ~1000-1200 words as Priority 2 context
- */
-const generateSimpleRAGContent = async (
+ */ 
+const generateSimpleRAGContent=async (
   apiKey,
   vectorStoreIds,
   lessonData,
   topicData,
   tokenSession,
-  abortSignal = null
-) => {
+  abortSignal=null
+)=> {
   try {
     console.log(`🔍 Stage 1: Starting simple RAG call for lesson: ${lessonData.lessonTitle}`);
     console.log(`📚 Using vector stores: ${vectorStoreIds}`);
 
     // Simple system prompt for Stage 1
-    const systemPrompt = `Act as a senior instructional designer. Output strictly as HTML, concise and practical. Audience is procure to pay professionals.`;
+    const systemPrompt=`Act as a senior instructional designer. Output strictly as HTML, concise and practical. Audience is procure to pay professionals.`;
 
     // Simple user prompt for Stage 1 - focused on extracting relevant content from files
-    const userPrompt = `Generate the <b>readingContent</b> (1000-1200 words in HTML) for the lesson "${lessonData.lessonTitle}" and lesson description "${lessonData.lessonDescription}", under topic "${topicData.topicTitle}" using the relevant reference from the attached documents from the reference library using file_search tool.
+    const userPrompt=`Generate the <b>readingContent</b> (1000-1200 words in HTML) for the lesson "${lessonData.lessonTitle}" and lesson description "${lessonData.lessonDescription}", under topic "${topicData.topicTitle}" using the relevant reference from the attached documents from the reference library using file_search tool.
 
 Focus on:
 - Core concepts and principles from the reference materials
@@ -309,6 +307,7 @@ Use the attached files as your primary source of authoritative information. Stru
         }
       ],
       max_output_tokens: 1200
+      // ✅ UPDATED: No temperature set - uses OpenAI default (1.0) - FIXED: Set to 0.3 for RAG
     };
 
     // Add file_search tools only if vector stores are provided
@@ -321,6 +320,9 @@ Use the attached files as your primary source of authoritative information. Stru
         }
       ];
     }
+
+    // ✅ FIXED: Add temperature for Stage 1 RAG
+    requestBody.temperature = 0.3;
 
     const response = await axios.post(
       'https://api.openai.com/v1/responses',
@@ -410,21 +412,21 @@ Use the attached files as your primary source of authoritative information. Stru
 /**
  * ✅ UPDATED: Stage 2 Enhanced Content Generation with Dynamic Subsections
  * Combines all contexts with priority hierarchy and uses dynamically generated subsections
- */
-const generateEnhancedContent = async (
+ */ 
+const generateEnhancedContent=async (
   apiKey,
   lessonData,
   topicData,
   ragContent, // Priority 2: RAG library content
-  webSearchContext = '', // Priority 1: Sonar web search context
-  courseContext = '', // Priority 3: Course/research context
-  mustHaveAspects = '',
-  designConsiderations = '',
-  audienceContext = 'Procure to pay professionals',
-  designParameters = {}, // Design parameters for instructional tuning
+  webSearchContext='', // Priority 1: Sonar web search context
+  courseContext='', // Priority 3: Course/research context
+  mustHaveAspects='',
+  designConsiderations='',
+  audienceContext='Procure to pay professionals',
+  designParameters={}, // Design parameters for instructional tuning
   tokenSession,
-  abortSignal = null
-) => {
+  abortSignal=null
+)=> {
   try {
     console.log(`🚀 Stage 2: Starting enhanced content generation for lesson: ${lessonData.lessonTitle}`);
 
@@ -457,12 +459,10 @@ const generateEnhancedContent = async (
     console.log(`📋 Dynamic subsections: ${dynamicSubsections.length} titles generated`);
 
     // Enhanced system prompt for Stage 2 with design parameters
-    const systemPrompt = `You are an expert educational content creator specializing in comprehensive lesson development for professional education.
-
-Create engaging, practical, and comprehensive lesson content that combines multiple sources of information with clear priority hierarchy:
+    const systemPrompt=`You are an expert educational content creator specializing in comprehensive lesson development for professional education. Create engaging, practical, and comprehensive lesson content that combines multiple sources of information with clear priority hierarchy:
 
 PRIORITY 1 (HIGHEST): Current web research and industry trends
-PRIORITY 2 (HIGH): Authoritative reference materials and domain expertise  
+PRIORITY 2 (HIGH): Authoritative reference materials and domain expertise
 PRIORITY 3 (MEDIUM): Overall course context and design requirements
 PRIORITY 4 (INSTRUCTIONAL): Design parameters for pedagogical approach
 
@@ -480,7 +480,7 @@ Tone: Professional, engaging, and practical - similar to Malcolm Gladwell or Dan
 Audience: ${audienceContext}`;
 
     // ✅ UPDATED: Enhanced user prompt with dynamic subsections
-    const userPrompt = `Generate comprehensive lesson content (4000-4500 words in HTML) for:
+    const userPrompt=`Generate comprehensive lesson content (4000-4500 words in HTML) for:
 
 **LESSON:** "${lessonData.lessonTitle}"
 **LESSON DESCRIPTION:** "${lessonData.lessonDescription}"
@@ -511,7 +511,8 @@ ${parameterInstructions}
 **✅ MAIN CONTENT STRUCTURE - Use these exact dynamically generated subsections:**
 ${dynamicSubsections.map((title, index) => `
 <h3>${title}</h3>
-[Generate approximately ${Math.floor(3200/4)} words of detailed, contextually relevant content for this subsection. Ensure each subsection builds logically on the previous one and incorporates insights from all priority contexts.]`).join('\n')}
+[Generate approximately ${Math.floor(3200/4)} words of detailed, contextually relevant content for this subsection. Ensure each subsection builds logically on the previous one and incorporates insights from all priority contexts.]`
+).join('\n')}
 
 **HTML STRUCTURE TEMPLATE:**
 <div class="lesson-content">
@@ -556,7 +557,7 @@ ${dynamicSubsections.map((title, index) => `
 
 **INTEGRATION GUIDELINES:**
 1. Lead with current industry insights and trends from web research
-2. Support with authoritative content from reference library  
+2. Support with authoritative content from reference library
 3. Frame within overall course context and learning objectives
 4. Apply instructional design parameters consistently throughout content
 5. Make content immediately actionable for ${audienceContext}
@@ -595,7 +596,7 @@ Generate the complete HTML lesson content now.`;
           }
         ],
         max_tokens: 6500,
-        temperature: 0.6
+        temperature: 0.4 // ✅ UPDATED: Stage 2 enhanced content temperature
       },
       {
         headers: {
@@ -608,7 +609,6 @@ Generate the complete HTML lesson content now.`;
     );
 
     console.log(`✅ Stage 2 enhanced API call successful!`);
-
     const enhancedContent = response.data.choices[0].message.content;
 
     // Update token tracking with actual usage
@@ -642,19 +642,19 @@ Generate the complete HTML lesson content now.`;
  * Main function: Two-Stage RAG Content Generation
  * ✅ UPDATED: Now includes dynamic subsection generation
  */
-export const generateTwoStageRAGContent = async (
+export const generateTwoStageRAGContent=async (
   apiKey,
   vectorStoreIds,
   lessonData,
   topicData,
-  courseContext = '',
-  mustHaveAspects = '',
-  designConsiderations = '',
-  webSearchContext = '',
-  audienceContext = 'Procure to pay professionals',
-  designParameters = {}, // Design parameters parameter
-  abortSignal = null
-) => {
+  courseContext='',
+  mustHaveAspects='',
+  designConsiderations='',
+  webSearchContext='',
+  audienceContext='Procure to pay professionals',
+  designParameters={}, // Design parameters parameter
+  abortSignal=null
+)=> {
   // Initialize token tracking session
   const tokenSession = TokenTracker.createSession(lessonData.lessonTitle);
 
@@ -799,18 +799,18 @@ export const generateTwoStageRAGContent = async (
  * Fallback function for when RAG is not available
  * ✅ UPDATED: Now includes dynamic subsection generation
  */
-export const generateFallbackContent = async (
+export const generateFallbackContent=async (
   apiKey,
   lessonData,
   topicData,
-  courseContext = '',
-  mustHaveAspects = '',
-  designConsiderations = '',
-  webSearchContext = '',
-  audienceContext = 'Procure to pay professionals',
-  designParameters = {}, // Design parameters parameter
-  abortSignal = null
-) => {
+  courseContext='',
+  mustHaveAspects='',
+  designConsiderations='',
+  webSearchContext='',
+  audienceContext='Procure to pay professionals',
+  designParameters={}, // Design parameters parameter
+  abortSignal=null
+)=> {
   console.log(`🔄 Using fallback content generation with dynamic subsections (no RAG available)`);
 
   // Initialize token tracking for fallback

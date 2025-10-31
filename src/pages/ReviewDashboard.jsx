@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react';
-    import { useParams, useNavigate } from 'react-router-dom';
-    import { motion, AnimatePresence } from 'framer-motion';
+import React,{useState,useEffect} from 'react';
+    import {useParams,useNavigate} from 'react-router-dom';
+    import {motion,AnimatePresence} from 'framer-motion';
     import toast from 'react-hot-toast';
     import * as FiIcons from 'react-icons/fi';
     import SafeIcon from '../common/SafeIcon';
-    import { useProgramStore } from '../stores/programStore';
-    import { useSettingsStore } from '../stores/settingsStore';
-    import { useGeneration } from '../contexts/GenerationContext';
-    import { useVectorStoreStore } from '../stores/vectorStoreStore';
+    import {useProgramStore} from '../stores/programStore';
+    import {useSettingsStore} from '../stores/settingsStore';
+    import {useGeneration} from '../contexts/GenerationContext';
+    import {useVectorStoreStore} from '../stores/vectorStoreStore';
     import Card from '../components/ui/Card';
     import Button from '../components/ui/Button';
     import Select from '../components/ui/Select';
@@ -17,145 +17,97 @@ import React, { useState, useEffect } from 'react';
     import KnowledgeLibraryBadge from '../components/rag/KnowledgeLibraryBadge';
     import DesignParametersDisplay from '../components/ui/DesignParametersDisplay';
     import DesignParametersForm from '../components/ui/DesignParametersForm';
-    import {
-      generateCourseContent,
-      generateCourseTopicsAndLessons,
-    } from '../services/enhancedAiService';
-    import {
-      getEffectiveDesignParameters,
-      DEFAULT_DESIGN_PARAMETERS,
-    } from '../services/instructionalParameterService';
+    import {generateCourseContent,generateCourseTopicsAndLessons,} from '../services/enhancedAiService';
+    import {getEffectiveDesignParameters,DEFAULT_DESIGN_PARAMETERS,} from '../services/instructionalParameterService';
     // ✅ NEW: Import numbering service functions
-    import {
-      applyNumberingToProgram,
-      extractNumberingFromTitle,
-      validateProgramCode,
-      getGenreName,
-    } from '../services/numberingService';
+    import {applyNumberingToProgram,extractNumberingFromTitle,validateProgramCode,getGenreName,} from '../services/numberingService';
+    import {fetchOpenAIModels} from '../services/apiKeyValidator';
     
-    const {
-      FiEdit3,
-      FiSave,
-      FiPlay,
-      FiChevronDown,
-      FiChevronRight,
-      FiBook,
-      FiTarget,
-      FiList,
-      FiInfo,
-      FiPlus,
-      FiTrash2,
-      FiRefreshCw,
-      FiFileText,
-      FiX,
-      FiDatabase,
-      FiSearch,
-      FiGlobe,
-      FiExternalLink,
-      FiChevronUp,
-      FiSettings,
-      FiMapPin,
-      FiClock,
-      FiFilter,
-      FiZap,
-      FiHash,
-    } = FiIcons;
+    const {FiEdit3,FiSave,FiPlay,FiChevronDown,FiChevronRight,FiBook,FiTarget,FiList,FiInfo,FiPlus,FiTrash2,FiRefreshCw,FiFileText,FiX,FiDatabase,FiSearch,FiGlobe,FiExternalLink,FiChevronUp,FiSettings,FiMapPin,FiClock,FiFilter,FiZap,FiHash,FiCpu,}=FiIcons;
     
-    const ReviewDashboard = () => {
-      const { programId } = useParams();
-      const navigate = useNavigate();
-      const { programs, currentProgram, setCurrentProgram, updateProgram } =
-        useProgramStore();
-      const {
-        getActiveOpenAIKeys,
-        getActivePerplexityKeys,
-        getDecryptedLMSCredentials,
-        getDecryptedAITableCredentials,
-      } = useSettingsStore();
-      const {
-        generationStatus,
-        startGeneration,
-        updateProgress,
-        updateTaskProgress,
-        pauseGeneration,
-        resumeGeneration,
-        abortGeneration,
-        completeGeneration,
-        failGeneration,
-        minimizeStatus,
-        maximizeStatus,
-        hideStatus,
-        getAbortSignal,
-        checkPauseStatus,
-        updateGenerationStatus, // Get updateGenerationStatus
-      } = useGeneration();
-      const { vectorStoreAssignments } = useVectorStoreStore();
-    
-      const [selectedCourseId, setSelectedCourseId] = useState('');
-      const [editingItem, setEditingItem] = useState(null);
-      const [expandedTopics, setExpandedTopics] = useState(new Set());
-      const [generating, setGenerating] = useState(false);
-      const [showInfoModal, setShowInfoModal] = useState(false);
-      const [regeneratingCourse, setRegeneratingCourse] = useState(false);
-      const [activeApiKey, setActiveApiKey] = useState(null);
+    const ReviewDashboard=()=> {
+      const {programId}=useParams();
+      const navigate=useNavigate();
+      const {programs,currentProgram,setCurrentProgram,updateProgram}=useProgramStore();
+      const {getActiveOpenAIKeys,getActivePerplexityKeys,getDecryptedLMSCredentials,getDecryptedAITableCredentials,}=useSettingsStore();
+      const {generationStatus,startGeneration,updateProgress,updateTaskProgress,pauseGeneration,resumeGeneration,abortGeneration,completeGeneration,failGeneration,minimizeStatus,maximizeStatus,hideStatus,getAbortSignal,checkPauseStatus,updateGenerationStatus,// Get updateGenerationStatus
+      }=useGeneration();
+      const {vectorStoreAssignments}=useVectorStoreStore();
+      const [selectedCourseId,setSelectedCourseId]=useState('');
+      const [editingItem,setEditingItem]=useState(null);
+      const [expandedTopics,setExpandedTopics]=useState(new Set());
+      const [generating,setGenerating]=useState(false);
+      const [showInfoModal,setShowInfoModal]=useState(false);
+      const [regeneratingCourse,setRegeneratingCourse]=useState(false);
+      const [activeApiKey,setActiveApiKey]=useState(null);
       // ✅ NEW: State for program code display
-      const [showProgramCodeInfo, setShowProgramCodeInfo] = useState(false);
-    
+      const [showProgramCodeInfo,setShowProgramCodeInfo]=useState(false);
       // New state for Perplexity Sonar web search context
-      const [usePerplexityWebSearch, setUsePerplexityWebSearch] = useState(false);
+      const [usePerplexityWebSearch,setUsePerplexityWebSearch]=useState(false);
       // Updated state for Sonar configuration with valid search_mode values
-      const [showSonarConfig, setShowSonarConfig] = useState(false);
-      const [sonarConfig, setSonarConfig] = useState({
-        sonarModel: 'sonar',
-        searchMode: 'web',
-        searchContextSize: 'medium',
-        searchRecency: 'month',
-        domainFilter: '',
-        temperature: 0.3,
-        maxTokens: 1400,
-        lessonMaxTokens: 400,
-        country: '',
-        region: '',
-        city: '',
-      });
-    
+      const [showSonarConfig,setShowSonarConfig]=useState(false);
+      const [sonarConfig,setSonarConfig]=useState({sonarModel: 'sonar',searchMode: 'web',searchContextSize: 'medium',searchRecency: 'month',domainFilter: '',temperature: 0.3,maxTokens: 1400,lessonMaxTokens: 400,country: '',region: '',city: '',});
       // State for design parameters override
-      const [showDesignParametersModal, setShowDesignParametersModal] =
-        useState(false);
-      const [courseDesignParameters, setCourseDesignParameters] = useState({});
-    
+      const [showDesignParametersModal,setShowDesignParametersModal]=useState(false);
+      const [courseDesignParameters,setCourseDesignParameters]=useState({});
       // New state for additional context modals
-      const [showTopicContextModal, setShowTopicContextModal] = useState(false);
-      const [showLessonContextModal, setShowLessonContextModal] = useState(false);
-      const [selectedTopicForContext, setSelectedTopicForContext] = useState(null);
-      const [selectedLessonForContext, setSelectedLessonForContext] =
-        useState(null);
-      const [topicContextInput, setTopicContextInput] = useState('');
-      const [lessonContextInput, setLessonContextInput] = useState('');
-    
+      const [showTopicContextModal,setShowTopicContextModal]=useState(false);
+      const [showLessonContextModal,setShowLessonContextModal]=useState(false);
+      const [selectedTopicForContext,setSelectedTopicForContext]=useState(null);
+      const [selectedLessonForContext,setSelectedLessonForContext]=useState(null);
+      const [topicContextInput,setTopicContextInput]=useState('');
+      const [lessonContextInput,setLessonContextInput]=useState('');
       // New state for citations display
-      const [showCitationsModal, setShowCitationsModal] = useState(false);
-      const [citationsExpanded, setCitationsExpanded] = useState(false);
+      const [showCitationsModal,setShowCitationsModal]=useState(false);
+      const [citationsExpanded,setCitationsExpanded]=useState(false);
+      // ✅ NEW: State for OpenAI models
+      const [openAIModels,setOpenAIModels]=useState([]);
+      const [modelsLoading,setModelsLoading]=useState(false);
+      const [selectedModel,setSelectedModel]=useState('gpt-5-mini-2025-08-07');
+      const [reasoningEffort,setReasoningEffort]=useState('medium');
+      const [verbosity,setVerbosity]=useState('medium');
+    
+      const isGpt5Model=selectedModel.startsWith('gpt-5');
     
       // Validation function for domain filter
-      const validateDomainFilter = (domains) => {
+      const validateDomainFilter=(domains)=> {
         if (!domains.trim()) return true;
-        const domainList = domains.split(',').map((d) => d.trim());
-        const domainRegex =
-          /^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?(\.[a-zA-Z]{2,})+$/;
-        return domainList.every((domain) => domainRegex.test(domain));
+        const domainList=domains.split(',').map((d)=> d.trim());
+        const domainRegex=/^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?(\.[a-zA-Z]{2,})+$/;
+        return domainList.every((domain)=> domainRegex.test(domain));
       };
     
       // Get API key for vector stores
-      useEffect(() => {
-        const keys = getActiveOpenAIKeys();
+      useEffect(()=> {
+        const keys=getActiveOpenAIKeys();
         if (keys.length > 0) {
           setActiveApiKey(keys[0].key);
         }
-      }, [getActiveOpenAIKeys]);
+      },[getActiveOpenAIKeys]);
     
-      useEffect(() => {
-        const program = programs.find((p) => p.id === programId);
+      // ✅ NEW: Fetch OpenAI models
+      useEffect(()=> {
+        const getModels=async ()=> {
+          if (activeApiKey) {
+            setModelsLoading(true);
+            const models=await fetchOpenAIModels(activeApiKey);
+            setOpenAIModels(models);
+            // Set default model
+            if (models.includes('gpt-5-mini-2025-08-07')) {
+              setSelectedModel('gpt-5-mini-2025-08-07');
+            } else if (models.includes('gpt-4o-mini')) {
+              setSelectedModel('gpt-4o-mini');
+            } else if (models.length > 0) {
+              setSelectedModel(models[0]);
+            }
+            setModelsLoading(false);
+          }
+        };
+        getModels();
+      },[activeApiKey]);
+    
+      useEffect(()=> {
+        const program=programs.find((p)=> p.id===programId);
         if (program) {
           setCurrentProgram(program);
           if (program.courses && program.courses.length > 0) {
@@ -171,222 +123,221 @@ import React, { useState, useEffect } from 'react';
         } else {
           navigate('/');
         }
-      }, [programId, programs, setCurrentProgram, navigate]);
+      },[programId,programs,setCurrentProgram,navigate]);
     
-      const selectedCourse = currentProgram?.courses?.find(
-        (c) => c.id === selectedCourseId
+      const selectedCourse=currentProgram?.courses?.find(
+        (c)=> c.id===selectedCourseId
       );
     
       // Get effective design parameters for the selected course
-      const getSelectedCourseDesignParameters = () => {
+      const getSelectedCourseDesignParameters=()=> {
         if (!selectedCourse) return DEFAULT_DESIGN_PARAMETERS;
-        return getEffectiveDesignParameters(selectedCourse, currentProgram);
+        return getEffectiveDesignParameters(selectedCourse,currentProgram);
       };
     
       // Handle design parameters override for course
-      const handleDesignParametersOverride = () => {
-        const currentParams = getSelectedCourseDesignParameters();
+      const handleDesignParametersOverride=()=> {
+        const currentParams=getSelectedCourseDesignParameters();
         setCourseDesignParameters(currentParams);
         setShowDesignParametersModal(true);
       };
     
       // Save design parameters override for course
-      const handleSaveDesignParametersOverride = () => {
+      const handleSaveDesignParametersOverride=()=> {
         if (!selectedCourse) return;
-        const updatedProgram = { ...currentProgram };
-        const course = updatedProgram.courses.find(
-          (c) => c.id === selectedCourseId
+        const updatedProgram={...currentProgram};
+        const course=updatedProgram.courses.find(
+          (c)=> c.id===selectedCourseId
         );
         if (course) {
-          course.designParameters = courseDesignParameters;
-          updateProgram(programId, updatedProgram);
+          course.designParameters=courseDesignParameters;
+          updateProgram(programId,updatedProgram);
           toast.success('Course design parameters updated successfully!');
         }
         setShowDesignParametersModal(false);
       };
     
       // Reset course design parameters to program defaults
-      const handleResetDesignParametersToDefaults = () => {
+      const handleResetDesignParametersToDefaults=()=> {
         if (!selectedCourse) return;
-        const updatedProgram = { ...currentProgram };
-        const course = updatedProgram.courses.find(
-          (c) => c.id === selectedCourseId
+        const updatedProgram={...currentProgram};
+        const course=updatedProgram.courses.find(
+          (c)=> c.id===selectedCourseId
         );
         if (course) {
-          delete course.designParameters; // Remove course-level overrides
-          updateProgram(programId, updatedProgram);
+          delete course.designParameters;// Remove course-level overrides
+          updateProgram(programId,updatedProgram);
           toast.success('Course design parameters reset to program defaults!');
         }
       };
     
       // Save sonar config to program
-      const saveSonarConfig = () => {
-        const updatedProgram = { ...currentProgram };
-        updatedProgram.sonarConfig = sonarConfig;
-        updateProgram(programId, updatedProgram);
+      const saveSonarConfig=()=> {
+        const updatedProgram={...currentProgram};
+        updatedProgram.sonarConfig=sonarConfig;
+        updateProgram(programId,updatedProgram);
         toast.success('Sonar configuration saved!');
         setShowSonarConfig(false);
       };
     
-      const handleEdit = (type, id, field, value) => {
-        setEditingItem({ type, id, field, value });
+      const handleEdit=(type,id,field,value)=> {
+        setEditingItem({type,id,field,value});
       };
     
       // ✅ UPDATED: Handle save with numbering preservation
-      const handleSave = () => {
+      const handleSave=()=> {
         if (!editingItem) return;
-        const { type, id, field, value } = editingItem;
-        const updatedProgram = { ...currentProgram };
-    
+        const {type,id,field,value}=editingItem;
+        const updatedProgram={...currentProgram};
         // Extract clean title without numbering for editing
-        const { cleanTitle } = extractNumberingFromTitle(value);
+        const {cleanTitle}=extractNumberingFromTitle(value);
     
-        if (type === 'course') {
-          const course = updatedProgram.courses.find((c) => c.id === id);
-          if (course && field === 'courseTitle') {
+        if (type==='course') {
+          const course=updatedProgram.courses.find((c)=> c.id===id);
+          if (course && field==='courseTitle') {
             // Preserve course code when editing title
-            const { code } = extractNumberingFromTitle(course.courseTitle);
-            course[field] = code ? `${code} ${cleanTitle}` : cleanTitle;
+            const {code}=extractNumberingFromTitle(course.courseTitle);
+            course[field]=code ? `${code} ${cleanTitle}` : cleanTitle;
           } else if (course) {
-            course[field] = value;
+            course[field]=value;
           }
-        } else if (type === 'topic') {
-          const course = updatedProgram.courses.find(
-            (c) => c.id === selectedCourseId
+        } else if (type==='topic') {
+          const course=updatedProgram.courses.find(
+            (c)=> c.id===selectedCourseId
           );
-          const topic = course?.topics?.find((t) => t.id === id);
-          if (topic && field === 'topicTitle') {
+          const topic=course?.topics?.find((t)=> t.id===id);
+          if (topic && field==='topicTitle') {
             // Preserve topic code when editing title
-            const { code } = extractNumberingFromTitle(topic.topicTitle);
-            topic[field] = code ? `${code} ${cleanTitle}` : cleanTitle;
+            const {code}=extractNumberingFromTitle(topic.topicTitle);
+            topic[field]=code ? `${code} ${cleanTitle}` : cleanTitle;
           } else if (topic) {
-            topic[field] = value;
+            topic[field]=value;
           }
-        } else if (type === 'lesson') {
-          const course = updatedProgram.courses.find(
-            (c) => c.id === selectedCourseId
+        } else if (type==='lesson') {
+          const course=updatedProgram.courses.find(
+            (c)=> c.id===selectedCourseId
           );
-          const topic = course?.topics?.find((t) =>
-            t.lessons?.some((l) => l.id === id)
+          const topic=course?.topics?.find((t)=>
+            t.lessons?.some((l)=> l.id===id)
           );
-          const lesson = topic?.lessons?.find((l) => l.id === id);
-          if (lesson && field === 'lessonTitle') {
+          const lesson=topic?.lessons?.find((l)=> l.id===id);
+          if (lesson && field==='lessonTitle') {
             // Preserve lesson code when editing title
-            const { code } = extractNumberingFromTitle(lesson.lessonTitle);
-            lesson[field] = code ? `${code} ${cleanTitle}` : cleanTitle;
+            const {code}=extractNumberingFromTitle(lesson.lessonTitle);
+            lesson[field]=code ? `${code} ${cleanTitle}` : cleanTitle;
           } else if (lesson) {
-            lesson[field] = value;
+            lesson[field]=value;
           }
         }
     
-        updateProgram(programId, updatedProgram);
+        updateProgram(programId,updatedProgram);
         setEditingItem(null);
         toast.success('Changes saved successfully!');
       };
     
-      const handleAddTopic = () => {
+      const handleAddTopic=()=> {
         if (!selectedCourse) return;
-        const newTopic = {
+        const newTopic={
           id: `topic-${Date.now()}`,
           topicTitle: 'New Topic',
           topicLearningObjectiveDescription: 'Learning objectives for this topic',
           additionalContext: '',
           lessons: [],
         };
-        const updatedProgram = { ...currentProgram };
-        const course = updatedProgram.courses.find(
-          (c) => c.id === selectedCourseId
+        const updatedProgram={...currentProgram};
+        const course=updatedProgram.courses.find(
+          (c)=> c.id===selectedCourseId
         );
         if (course) {
-          course.topics = [...(course.topics || []), newTopic];
+          course.topics=[...(course.topics || []),newTopic];
           // ✅ NEW: Re-apply numbering after adding topic
-          const reNumberedProgram = applyNumberingToProgram(updatedProgram);
-          updateProgram(programId, reNumberedProgram);
-          setExpandedTopics(new Set([...expandedTopics, newTopic.id]));
+          const reNumberedProgram=applyNumberingToProgram(updatedProgram);
+          updateProgram(programId,reNumberedProgram);
+          setExpandedTopics(new Set([...expandedTopics,newTopic.id]));
           toast.success('New topic added successfully!');
         }
       };
     
-      const handleAddLesson = (topicId) => {
-        const newLesson = {
+      const handleAddLesson=(topicId)=> {
+        const newLesson={
           id: `lesson-${Date.now()}`,
           lessonTitle: 'New Lesson',
           lessonDescription: 'Lesson description and objectives',
           additionalContext: '',
         };
-        const updatedProgram = { ...currentProgram };
-        const course = updatedProgram.courses.find(
-          (c) => c.id === selectedCourseId
+        const updatedProgram={...currentProgram};
+        const course=updatedProgram.courses.find(
+          (c)=> c.id===selectedCourseId
         );
-        const topic = course?.topics?.find((t) => t.id === topicId);
+        const topic=course?.topics?.find((t)=> t.id===topicId);
         if (topic) {
-          topic.lessons = [...(topic.lessons || []), newLesson];
+          topic.lessons=[...(topic.lessons || []),newLesson];
           // ✅ NEW: Re-apply numbering after adding lesson
-          const reNumberedProgram = applyNumberingToProgram(updatedProgram);
-          updateProgram(programId, reNumberedProgram);
+          const reNumberedProgram=applyNumberingToProgram(updatedProgram);
+          updateProgram(programId,reNumberedProgram);
           toast.success('New lesson added successfully!');
         }
       };
     
-      const handleDeleteTopic = (topicId) => {
-        const updatedProgram = { ...currentProgram };
-        const course = updatedProgram.courses.find(
-          (c) => c.id === selectedCourseId
+      const handleDeleteTopic=(topicId)=> {
+        const updatedProgram={...currentProgram};
+        const course=updatedProgram.courses.find(
+          (c)=> c.id===selectedCourseId
         );
         if (course) {
-          course.topics = course.topics.filter((t) => t.id !== topicId);
+          course.topics=course.topics.filter((t)=> t.id !==topicId);
           // ✅ NEW: Re-apply numbering after deleting topic
-          const reNumberedProgram = applyNumberingToProgram(updatedProgram);
-          updateProgram(programId, reNumberedProgram);
-          const newExpanded = new Set(expandedTopics);
+          const reNumberedProgram=applyNumberingToProgram(updatedProgram);
+          updateProgram(programId,reNumberedProgram);
+          const newExpanded=new Set(expandedTopics);
           newExpanded.delete(topicId);
           setExpandedTopics(newExpanded);
           toast.success('Topic deleted successfully!');
         }
       };
     
-      const handleDeleteLesson = (lessonId) => {
-        const updatedProgram = { ...currentProgram };
-        const course = updatedProgram.courses.find(
-          (c) => c.id === selectedCourseId
+      const handleDeleteLesson=(lessonId)=> {
+        const updatedProgram={...currentProgram};
+        const course=updatedProgram.courses.find(
+          (c)=> c.id===selectedCourseId
         );
-        const topic = course?.topics?.find((t) =>
-          t.lessons?.some((l) => l.id === lessonId)
+        const topic=course?.topics?.find((t)=>
+          t.lessons?.some((l)=> l.id===lessonId)
         );
         if (topic) {
-          topic.lessons = topic.lessons.filter((l) => l.id !== lessonId);
+          topic.lessons=topic.lessons.filter((l)=> l.id !==lessonId);
           // ✅ NEW: Re-apply numbering after deleting lesson
-          const reNumberedProgram = applyNumberingToProgram(updatedProgram);
-          updateProgram(programId, reNumberedProgram);
+          const reNumberedProgram=applyNumberingToProgram(updatedProgram);
+          updateProgram(programId,reNumberedProgram);
           toast.success('Lesson deleted successfully!');
         }
       };
     
       // New handlers for additional context modals
-      const handleOpenTopicContextModal = (topic) => {
+      const handleOpenTopicContextModal=(topic)=> {
         setSelectedTopicForContext(topic);
         setTopicContextInput(topic.additionalContext || '');
         setShowTopicContextModal(true);
       };
     
-      const handleOpenLessonContextModal = (lesson) => {
+      const handleOpenLessonContextModal=(lesson)=> {
         setSelectedLessonForContext(lesson);
         setLessonContextInput(lesson.additionalContext || '');
         setShowLessonContextModal(true);
       };
     
-      const handleSaveTopicContext = () => {
+      const handleSaveTopicContext=()=> {
         if (!selectedTopicForContext) return;
-        const updatedProgram = { ...currentProgram };
-        const course = updatedProgram.courses.find(
-          (c) => c.id === selectedCourseId
+        const updatedProgram={...currentProgram};
+        const course=updatedProgram.courses.find(
+          (c)=> c.id===selectedCourseId
         );
-        const topic = course?.topics?.find(
-          (t) => t.id === selectedTopicForContext.id
+        const topic=course?.topics?.find(
+          (t)=> t.id===selectedTopicForContext.id
         );
         if (topic) {
-          topic.additionalContext = topicContextInput;
-          updateProgram(programId, updatedProgram);
+          topic.additionalContext=topicContextInput;
+          updateProgram(programId,updatedProgram);
           toast.success('Topic additional context saved!');
         }
         setShowTopicContextModal(false);
@@ -394,21 +345,21 @@ import React, { useState, useEffect } from 'react';
         setTopicContextInput('');
       };
     
-      const handleSaveLessonContext = () => {
+      const handleSaveLessonContext=()=> {
         if (!selectedLessonForContext) return;
-        const updatedProgram = { ...currentProgram };
-        const course = updatedProgram.courses.find(
-          (c) => c.id === selectedCourseId
+        const updatedProgram={...currentProgram};
+        const course=updatedProgram.courses.find(
+          (c)=> c.id===selectedCourseId
         );
-        const topic = course?.topics?.find((t) =>
-          t.lessons?.some((l) => l.id === selectedLessonForContext.id)
+        const topic=course?.topics?.find((t)=>
+          t.lessons?.some((l)=> l.id===selectedLessonForContext.id)
         );
-        const lesson = topic?.lessons?.find(
-          (l) => l.id === selectedLessonForContext.id
+        const lesson=topic?.lessons?.find(
+          (l)=> l.id===selectedLessonForContext.id
         );
         if (lesson) {
-          lesson.additionalContext = lessonContextInput;
-          updateProgram(programId, updatedProgram);
+          lesson.additionalContext=lessonContextInput;
+          updateProgram(programId,updatedProgram);
           toast.success('Lesson additional context saved!');
         }
         setShowLessonContextModal(false);
@@ -416,10 +367,10 @@ import React, { useState, useEffect } from 'react';
         setLessonContextInput('');
       };
     
-      const handleRegenerateCourse = async () => {
+      const handleRegenerateCourse=async ()=> {
         if (!selectedCourse) return;
-        const activeKeys = getActiveOpenAIKeys();
-        if (activeKeys.length === 0) {
+        const activeKeys=getActiveOpenAIKeys();
+        if (activeKeys.length===0) {
           toast.error('Please add at least one OpenAI API key in settings.');
           return;
         }
@@ -431,13 +382,13 @@ import React, { useState, useEffect } from 'react';
           0,
           'Initiating course regeneration...'
         );
-        toast.loading('Regenerating course topics and lessons...', {
+        toast.loading('Regenerating course topics and lessons...',{
           id: 'regenerating',
         });
     
         try {
-          updateProgress(20, 'Analyzing course context and requirements...', 'analysis');
-          const result = await generateCourseTopicsAndLessons(
+          updateProgress(20,'Analyzing course context and requirements...','analysis');
+          const result=await generateCourseTopicsAndLessons(
             selectedCourse,
             currentProgram.programContext,
             currentProgram.summaryProgramContext,
@@ -445,31 +396,32 @@ import React, { useState, useEffect } from 'react';
             currentProgram.designConsiderations,
             activeKeys[0].key
           );
-          updateProgress(60, 'Generating new topics and lessons...', 'generation');
-    
+          updateProgress(60,'Generating new topics and lessons...','generation');
           if (result.topics && result.topics.length > 0) {
-            const updatedProgram = { ...currentProgram };
-            const course = updatedProgram.courses.find(
-              (c) => c.id === selectedCourseId
+            const updatedProgram={...currentProgram};
+            const course=updatedProgram.courses.find(
+              (c)=> c.id===selectedCourseId
             );
             if (course) {
-              course.topics = result.topics;
+              course.topics=result.topics;
               // ✅ NEW: Re-apply numbering after regenerating course
-              const reNumberedProgram = applyNumberingToProgram(updatedProgram);
-              updateProgram(programId, reNumberedProgram);
+              const reNumberedProgram=applyNumberingToProgram(updatedProgram);
+              updateProgram(programId,reNumberedProgram);
               if (result.topics.length > 0) {
                 setExpandedTopics(new Set([result.topics[0].id]));
               }
-              updateProgress(90, 'Finalizing course structure...', 'finalizing');
-              setTimeout(() => {
+              updateProgress(90,'Finalizing course structure...','finalizing');
+              setTimeout(()=> {
                 completeGeneration('Course regenerated successfully!');
-              }, 1000);
-              toast.success('Course regenerated successfully!', { id: 'regenerating' });
+              },1000);
+              toast.success('Course regenerated successfully!',{
+                id: 'regenerating',
+              });
             }
           }
         } catch (error) {
-          console.error('Error regenerating course:', error);
-          toast.error('Failed to regenerate course. Please try again.', {
+          console.error('Error regenerating course:',error);
+          toast.error('Failed to regenerate course. Please try again.',{
             id: 'regenerating',
           });
           failGeneration(
@@ -480,8 +432,8 @@ import React, { useState, useEffect } from 'react';
         }
       };
     
-      const toggleTopic = (topicId) => {
-        const newExpanded = new Set(expandedTopics);
+      const toggleTopic=(topicId)=> {
+        const newExpanded=new Set(expandedTopics);
         if (newExpanded.has(topicId)) {
           newExpanded.delete(topicId);
         } else {
@@ -490,17 +442,18 @@ import React, { useState, useEffect } from 'react';
         setExpandedTopics(newExpanded);
       };
     
-      const handleGenerateContent = async () => {
+      const handleGenerateContent=async ()=> {
         if (!selectedCourse) {
           toast.error('Please select a course first.');
           return;
         }
-        const activeKeys = getActiveOpenAIKeys();
-        const perplexityKeys = getActivePerplexityKeys();
-        const lmsCredentials = getDecryptedLMSCredentials();
-        const aitableCredentials = getDecryptedAITableCredentials();
     
-        if (activeKeys.length === 0) {
+        const activeKeys=getActiveOpenAIKeys();
+        const perplexityKeys=getActivePerplexityKeys();
+        const lmsCredentials=getDecryptedLMSCredentials();
+        const aitableCredentials=getDecryptedAITableCredentials();
+    
+        if (activeKeys.length===0) {
           toast.error('Please add at least one OpenAI API key in settings.');
           navigate('/settings');
           return;
@@ -513,7 +466,7 @@ import React, { useState, useEffect } from 'react';
         }
     
         // Check if Perplexity is required but not available
-        if (usePerplexityWebSearch && perplexityKeys.length === 0) {
+        if (usePerplexityWebSearch && perplexityKeys.length===0) {
           toast.error(
             'Perplexity web search is enabled but no Perplexity API keys found. Please add a Perplexity API key or disable web search.'
           );
@@ -526,17 +479,18 @@ import React, { useState, useEffect } from 'react';
           !validateDomainFilter(sonarConfig.domainFilter)
         ) {
           toast.error(
-            'Invalid domain filter format. Please use valid domain names separated by commas (e.g., wordpress.org,github.com)'
+            'Invalid domain filter format. Please use valid domain names separated by commas (e.g.,wordpress.org,github.com)'
           );
           return;
         }
     
         setGenerating(true);
+    
         // Calculate totals
-        const totalTopics = selectedCourse.topics?.length || 0;
-        const totalLessons =
+        const totalTopics=selectedCourse.topics?.length || 0;
+        const totalLessons=
           selectedCourse.topics?.reduce(
-            (total, topic) => total + (topic.lessons?.length || 0),
+            (total,topic)=> total + (topic.lessons?.length || 0),
             0
           ) || 0;
     
@@ -546,9 +500,13 @@ import React, { useState, useEffect } from 'react';
           totalLessons,
           'Starting full course content generation...'
         );
-        toast.loading('Generating full course content...', {
+        toast.loading('Generating full course content...',{
           id: 'generating-content',
         });
+    
+        const gpt5Params=isGpt5Model
+          ? {reasoning_effort: reasoningEffort,verbosity: verbosity}
+          : {};
     
         try {
           await generateCourseContent(
@@ -570,11 +528,13 @@ import React, { useState, useEffect } from 'react';
               sonarConfig: usePerplexityWebSearch ? sonarConfig : null,
               lessonMaxTokens: sonarConfig.lessonMaxTokens,
             },
-            currentProgram, // Pass program context for design parameters
-            aitableCredentials // Pass AITable credentials
+            currentProgram,
+            aitableCredentials,
+            selectedModel,
+            gpt5Params
           );
     
-          updateProgram(programId, {
+          updateProgram(programId,{
             status: 'in-progress',
             lastGenerated: new Date().toISOString(),
           });
@@ -584,16 +544,16 @@ import React, { useState, useEffect } from 'react';
           );
           toast.success(
             'Content generation completed! Check your LMS for the uploaded materials.',
-            { id: 'generating-content' }
+            {id: 'generating-content'}
           );
         } catch (error) {
-          console.error('Error generating content:', error);
-          if (error.message === 'Request aborted by user') {
-            toast.error('Content generation was aborted.', {
+          console.error('Error generating content:',error);
+          if (error.message==='Request aborted by user') {
+            toast.error('Content generation was aborted.',{
               id: 'generating-content',
             });
           } else {
-            toast.error('Failed to generate content. Please try again.', {
+            toast.error('Failed to generate content. Please try again.',{
               id: 'generating-content',
             });
             failGeneration(
@@ -606,34 +566,31 @@ import React, { useState, useEffect } from 'react';
       };
     
       // ✅ NEW: Program Code Info Modal Component
-      const ProgramCodeInfoModal = () => (
+      const ProgramCodeInfoModal=()=> (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          initial={{opacity: 0}}
+          animate={{opacity: 1}}
+          exit={{opacity: 0}}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowProgramCodeInfo(false)}
+          onClick={()=> setShowProgramCodeInfo(false)}
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            initial={{scale: 0.9,opacity: 0}}
+            animate={{scale: 1,opacity: 1}}
+            exit={{scale: 0.9,opacity: 0}}
             className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e)=> e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
                 <SafeIcon icon={FiHash} className="text-2xl text-primary-600" />
                 <h3 className="text-xl font-bold">Program Numbering System</h3>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowProgramCodeInfo(false)}
-              >
+              <Button variant="ghost" size="sm" onClick={()=> setShowProgramCodeInfo(false)}>
                 <SafeIcon icon={FiX} />
               </Button>
             </div>
+    
             <div className="space-y-6">
               {/* Program Code Breakdown */}
               {currentProgram?.programCode && (
@@ -641,10 +598,10 @@ import React, { useState, useEffect } from 'react';
                   <h4 className="font-medium text-primary-800 mb-3">
                     Your Program Code: {currentProgram.programCode}
                   </h4>
-                  {(() => {
-                    const validation = validateProgramCode(currentProgram.programCode);
+                  {(()=> {
+                    const validation=validateProgramCode(currentProgram.programCode);
                     if (validation.isValid) {
-                      const { components } = validation;
+                      const {components}=validation;
                       return (
                         <div className="grid grid-cols-3 gap-4 text-sm">
                           <div className="bg-white p-3 rounded border border-primary-200">
@@ -706,7 +663,7 @@ import React, { useState, useEffect } from 'react';
                   </p>
                   <div className="text-xs text-gray-500">
                     <div>• Uses full program code + course sequence number</div>
-                    <div>• First course: 1BMU281, Second course: 1BMU282, etc.</div>
+                    <div>• First course: 1BMU281,Second course: 1BMU282,etc.</div>
                   </div>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
@@ -717,7 +674,7 @@ import React, { useState, useEffect } from 'react';
                   <div className="text-xs text-gray-500">
                     <div>• Part 1: 6-character program code</div>
                     <div>
-                      • Part 2: 2-digit topic sequence (e.g., 11=Course 1, Topic 1)
+                      • Part 2: 2-digit topic sequence (e.g.,11=Course 1,Topic 1)
                     </div>
                   </div>
                 </div>
@@ -730,7 +687,7 @@ import React, { useState, useEffect } from 'react';
                   <div className="text-xs text-gray-500">
                     <div>• Part 1: 6-character program code</div>
                     <div>
-                      • Part 2: 3-digit lesson sequence (e.g., 111=Topic 1.1, Lesson
+                      • Part 2: 3-digit lesson sequence (e.g.,111=Topic 1.1,Lesson
                       1)
                     </div>
                   </div>
@@ -746,7 +703,7 @@ import React, { useState, useEffect } from 'react';
                   <div>1 - Technology & Computer Science</div>
                   <div>2 - Business & Management</div>
                   <div>3 - Personal & Professional Development</div>
-                  <div>4 - Lifestyle, Hobbies, & Practical Skills</div>
+                  <div>4 - Lifestyle,Hobbies,& Practical Skills</div>
                   <div>5 - Creative Arts & Design</div>
                   <div>6 - Academic Subjects</div>
                 </div>
@@ -756,35 +713,32 @@ import React, { useState, useEffect } from 'react';
         </motion.div>
       );
     
-      // Sonar Configuration Modal Component (existing, unchanged)
-      const SonarConfigModal = () => (
+      // Sonar Configuration Modal Component (existing,unchanged)
+      const SonarConfigModal=()=> (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          initial={{opacity: 0}}
+          animate={{opacity: 1}}
+          exit={{opacity: 0}}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowSonarConfig(false)}
+          onClick={()=> setShowSonarConfig(false)}
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            initial={{scale: 0.9,opacity: 0}}
+            animate={{scale: 1,opacity: 1}}
+            exit={{scale: 0.9,opacity: 0}}
             className="bg-white rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e)=> e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
                 <SafeIcon icon={FiSettings} className="text-2xl text-purple-600" />
                 <h3 className="text-xl font-bold">Sonar Web Search Configuration</h3>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowSonarConfig(false)}
-              >
+              <Button variant="ghost" size="sm" onClick={()=> setShowSonarConfig(false)}>
                 <SafeIcon icon={FiX} />
               </Button>
             </div>
+    
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Basic Configuration */}
               <Card className="p-4">
@@ -796,24 +750,24 @@ import React, { useState, useEffect } from 'react';
                   <Select
                     label="Sonar Model"
                     value={sonarConfig.sonarModel}
-                    onChange={(e) =>
-                      setSonarConfig({ ...sonarConfig, sonarModel: e.target.value })
+                    onChange={(e)=>
+                      setSonarConfig({...sonarConfig,sonarModel: e.target.value})
                     }
                     options={[
-                      { value: 'sonar', label: 'Sonar (Standard)' },
-                      { value: 'sonar-pro', label: 'Sonar Pro (Advanced)' },
+                      {value: 'sonar',label: 'Sonar (Standard)'},
+                      {value: 'sonar-pro',label: 'Sonar Pro (Advanced)'},
                     ]}
                   />
                   <Select
                     label="Search Mode"
                     value={sonarConfig.searchMode}
-                    onChange={(e) =>
-                      setSonarConfig({ ...sonarConfig, searchMode: e.target.value })
+                    onChange={(e)=>
+                      setSonarConfig({...sonarConfig,searchMode: e.target.value})
                     }
                     options={[
-                      { value: 'web', label: 'Web Search' },
-                      { value: 'academic', label: 'Academic Search' },
-                      { value: 'sec', label: 'SEC Filings' },
+                      {value: 'web',label: 'Web Search'},
+                      {value: 'academic',label: 'Academic Search'},
+                      {value: 'sec',label: 'SEC Filings'},
                     ]}
                   />
                   <Input
@@ -823,7 +777,7 @@ import React, { useState, useEffect } from 'react';
                     max="1"
                     step="0.1"
                     value={sonarConfig.temperature}
-                    onChange={(e) =>
+                    onChange={(e)=>
                       setSonarConfig({
                         ...sonarConfig,
                         temperature: parseFloat(e.target.value),
@@ -837,7 +791,7 @@ import React, { useState, useEffect } from 'react';
                       min="100"
                       max="4000"
                       value={sonarConfig.maxTokens}
-                      onChange={(e) =>
+                      onChange={(e)=>
                         setSonarConfig({
                           ...sonarConfig,
                           maxTokens: parseInt(e.target.value),
@@ -850,7 +804,7 @@ import React, { useState, useEffect } from 'react';
                       min="100"
                       max="1000"
                       value={sonarConfig.lessonMaxTokens || 400}
-                      onChange={(e) =>
+                      onChange={(e)=>
                         setSonarConfig({
                           ...sonarConfig,
                           lessonMaxTokens: parseInt(e.target.value),
@@ -860,6 +814,7 @@ import React, { useState, useEffect } from 'react';
                   </div>
                 </div>
               </Card>
+    
               {/* Search Configuration */}
               <Card className="p-4">
                 <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
@@ -870,32 +825,32 @@ import React, { useState, useEffect } from 'react';
                   <Select
                     label="Search Context Size"
                     value={sonarConfig.searchContextSize}
-                    onChange={(e) =>
+                    onChange={(e)=>
                       setSonarConfig({
                         ...sonarConfig,
                         searchContextSize: e.target.value,
                       })
                     }
                     options={[
-                      { value: 'low', label: 'Low Context' },
-                      { value: 'medium', label: 'Medium Context' },
-                      { value: 'high', label: 'High Context' },
+                      {value: 'low',label: 'Low Context'},
+                      {value: 'medium',label: 'Medium Context'},
+                      {value: 'high',label: 'High Context'},
                     ]}
                   />
                   <Select
                     label="Search Recency Filter"
                     value={sonarConfig.searchRecency}
-                    onChange={(e) =>
+                    onChange={(e)=>
                       setSonarConfig({
                         ...sonarConfig,
                         searchRecency: e.target.value,
                       })
                     }
                     options={[
-                      { value: 'day', label: 'Last Day' },
-                      { value: 'week', label: 'Last Week' },
-                      { value: 'month', label: 'Last Month' },
-                      { value: 'year', label: 'Last Year' },
+                      {value: 'day',label: 'Last Day'},
+                      {value: 'week',label: 'Last Week'},
+                      {value: 'month',label: 'Last Month'},
+                      {value: 'year',label: 'Last Year'},
                     ]}
                   />
                   <div>
@@ -903,7 +858,7 @@ import React, { useState, useEffect } from 'react';
                       label="Domain Filter (Optional)"
                       placeholder="wordpress.org,github.com,stackoverflow.com"
                       value={sonarConfig.domainFilter}
-                      onChange={(e) =>
+                      onChange={(e)=>
                         setSonarConfig({
                           ...sonarConfig,
                           domainFilter: e.target.value,
@@ -917,13 +872,13 @@ import React, { useState, useEffect } from 'react';
                     {sonarConfig.domainFilter &&
                       !validateDomainFilter(sonarConfig.domainFilter) && (
                         <p className="text-xs text-red-600 mt-1">
-                          Invalid domain format. Use valid domains like: example.com,
-                          site.org
+                          Invalid domain format. Use valid domains like: example.com,site.org
                         </p>
                       )}
                   </div>
                 </div>
               </Card>
+    
               {/* Location Configuration */}
               <Card className="p-4 md:col-span-2">
                 <h4 className="font-semibold text-gray-900 mb-4 flex items-center">
@@ -933,26 +888,26 @@ import React, { useState, useEffect } from 'react';
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <Input
                     label="Country"
-                    placeholder="e.g., United States"
+                    placeholder="e.g.,United States"
                     value={sonarConfig.country}
-                    onChange={(e) =>
-                      setSonarConfig({ ...sonarConfig, country: e.target.value })
+                    onChange={(e)=>
+                      setSonarConfig({...sonarConfig,country: e.target.value})
                     }
                   />
                   <Input
                     label="Region/State"
-                    placeholder="e.g., California"
+                    placeholder="e.g.,California"
                     value={sonarConfig.region}
-                    onChange={(e) =>
-                      setSonarConfig({ ...sonarConfig, region: e.target.value })
+                    onChange={(e)=>
+                      setSonarConfig({...sonarConfig,region: e.target.value})
                     }
                   />
                   <Input
                     label="City"
-                    placeholder="e.g., San Francisco"
+                    placeholder="e.g.,San Francisco"
                     value={sonarConfig.city}
-                    onChange={(e) =>
-                      setSonarConfig({ ...sonarConfig, city: e.target.value })
+                    onChange={(e)=>
+                      setSonarConfig({...sonarConfig,city: e.target.value})
                     }
                   />
                 </div>
@@ -962,11 +917,9 @@ import React, { useState, useEffect } from 'react';
                 </p>
               </Card>
             </div>
+    
             <div className="flex justify-end space-x-3 mt-6">
-              <Button
-                variant="secondary"
-                onClick={() => setShowSonarConfig(false)}
-              >
+              <Button variant="secondary" onClick={()=> setShowSonarConfig(false)}>
                 Cancel
               </Button>
               <Button onClick={saveSonarConfig}>Save Configuration</Button>
@@ -975,21 +928,21 @@ import React, { useState, useEffect } from 'react';
         </motion.div>
       );
     
-      // Design Parameters Override Modal (existing, unchanged)
-      const DesignParametersModal = () => (
+      // Design Parameters Override Modal (existing,unchanged)
+      const DesignParametersModal=()=> (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          initial={{opacity: 0}}
+          animate={{opacity: 1}}
+          exit={{opacity: 0}}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowDesignParametersModal(false)}
+          onClick={()=> setShowDesignParametersModal(false)}
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            initial={{scale: 0.9,opacity: 0}}
+            animate={{scale: 1,opacity: 1}}
+            exit={{scale: 0.9,opacity: 0}}
             className="bg-white rounded-xl p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e)=> e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
@@ -1001,11 +954,12 @@ import React, { useState, useEffect } from 'react';
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowDesignParametersModal(false)}
+                onClick={()=> setShowDesignParametersModal(false)}
               >
                 <SafeIcon icon={FiX} />
               </Button>
             </div>
+    
             <div className="mb-6">
               <h4 className="font-medium text-gray-900 mb-2">
                 {selectedCourse?.courseTitle}
@@ -1017,19 +971,20 @@ import React, { useState, useEffect } from 'react';
               {selectedCourse?.designParameters ? (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
                   <p className="text-blue-800 text-sm">
-                    ✅ This course has custom design parameter overrides. Changes will
-                    update the course-specific settings.
+                    ✅ This course has custom design parameter overrides. Changes
+                    will update the course-specific settings.
                   </p>
                 </div>
               ) : (
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
                   <p className="text-gray-700 text-sm">
-                    📋 This course is using program-level defaults. Any changes will
-                    create course-specific overrides.
+                    📋 This course is using program-level defaults. Any changes
+                    will create course-specific overrides.
                   </p>
                 </div>
               )}
             </div>
+    
             <DesignParametersForm
               designParameters={courseDesignParameters}
               onChange={setCourseDesignParameters}
@@ -1037,6 +992,7 @@ import React, { useState, useEffect } from 'react';
               description="These parameters will override the program defaults for this course only."
               showDescription={false}
             />
+    
             <div className="flex justify-between mt-6">
               <div>
                 {selectedCourse?.designParameters && (
@@ -1052,7 +1008,7 @@ import React, { useState, useEffect } from 'react';
               <div className="flex space-x-3">
                 <Button
                   variant="secondary"
-                  onClick={() => setShowDesignParametersModal(false)}
+                  onClick={()=> setShowDesignParametersModal(false)}
                 >
                   Cancel
                 </Button>
@@ -1065,21 +1021,21 @@ import React, { useState, useEffect } from 'react';
         </motion.div>
       );
     
-      // Citations Modal Component (existing, unchanged)
-      const CitationsModal = () => (
+      // Citations Modal Component (existing,unchanged)
+      const CitationsModal=()=> (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          initial={{opacity: 0}}
+          animate={{opacity: 1}}
+          exit={{opacity: 0}}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowCitationsModal(false)}
+          onClick={()=> setShowCitationsModal(false)}
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            initial={{scale: 0.9,opacity: 0}}
+            animate={{scale: 1,opacity: 1}}
+            exit={{scale: 0.9,opacity: 0}}
             className="bg-white rounded-xl p-6 max-w-4xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e)=> e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
@@ -1089,14 +1045,11 @@ import React, { useState, useEffect } from 'react';
                 />
                 <h3 className="text-xl font-bold">Research Sources & Citations</h3>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowCitationsModal(false)}
-              >
+              <Button variant="ghost" size="sm" onClick={()=> setShowCitationsModal(false)}>
                 <SafeIcon icon={FiX} />
               </Button>
             </div>
+    
             <div className="space-y-6">
               {/* Research Context Citations */}
               {currentProgram?.researchCitations &&
@@ -1108,11 +1061,11 @@ import React, { useState, useEffect } from 'react';
                     </h4>
                     <div className="bg-purple-50 border border-purple-200 rounded-lg p-4 mb-4">
                       <p className="text-purple-800 text-sm mb-3">
-                        These sources were used to gather current industry trends
-                        and market insights for your program context.
+                        These sources were used to gather current industry trends and
+                        market insights for your program context.
                       </p>
                       <div className="grid gap-3">
-                        {currentProgram.researchCitations.map((citation, index) => (
+                        {currentProgram.researchCitations.map((citation,index)=> (
                           <div
                             key={index}
                             className="flex items-start space-x-3 p-3 bg-white rounded-lg border border-purple-200"
@@ -1162,7 +1115,7 @@ import React, { useState, useEffect } from 'react';
                       </p>
                       <div className="grid gap-3">
                         {currentProgram.structureCitations.map(
-                          (citation, index) => (
+                          (citation,index)=> (
                             <div
                               key={index}
                               className="flex items-start space-x-3 p-3 bg-white rounded-lg border border-indigo-200"
@@ -1194,9 +1147,9 @@ import React, { useState, useEffect } from 'react';
     
               {/* No Citations Available */}
               {(!currentProgram?.researchCitations ||
-                currentProgram.researchCitations.length === 0) &&
+                currentProgram.researchCitations.length===0) &&
                 (!currentProgram?.structureCitations ||
-                  currentProgram.structureCitations.length === 0) && (
+                  currentProgram.structureCitations.length===0) && (
                   <div className="text-center py-8">
                     <SafeIcon
                       icon={FiInfo}
@@ -1206,8 +1159,8 @@ import React, { useState, useEffect } from 'react';
                       No Citations Available
                     </h4>
                     <p className="text-gray-600">
-                      This program was generated without external research sources
-                      or the citations were not captured.
+                      This program was generated without external research sources or
+                      the citations were not captured.
                     </p>
                   </div>
                 )}
@@ -1216,21 +1169,21 @@ import React, { useState, useEffect } from 'react';
         </motion.div>
       );
     
-      // Info Modal Component (existing, unchanged)
-      const InfoModal = () => (
+      // Info Modal Component (existing,unchanged)
+      const InfoModal=()=> (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          initial={{opacity: 0}}
+          animate={{opacity: 1}}
+          exit={{opacity: 0}}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowInfoModal(false)}
+          onClick={()=> setShowInfoModal(false)}
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            initial={{scale: 0.9,opacity: 0}}
+            animate={{scale: 1,opacity: 1}}
+            exit={{scale: 0.9,opacity: 0}}
             className="bg-white rounded-xl p-6 max-w-md w-full"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e)=> e.stopPropagation()}
           >
             <h3 className="text-xl font-bold mb-4">Content Generation Process</h3>
             <div className="space-y-4">
@@ -1240,8 +1193,8 @@ import React, { useState, useEffect } from 'react';
                   1
                 </div>
                 <p>
-                  The system first conducts comprehensive research using AI to
-                  analyze your niche and create detailed program context.
+                  The system first conducts comprehensive research using AI to analyze
+                  your niche and create detailed program context.
                 </p>
               </div>
               <div className="flex items-start space-x-3">
@@ -1249,8 +1202,8 @@ import React, { useState, useEffect } from 'react';
                   2
                 </div>
                 <p>
-                  Based on the research, GPT-4.1 or Sonar-Pro generates the program
-                  structure with detailed courses, topics, and lessons.
+                  Based on the research,GPT-4.1 or Sonar-Pro generates the program
+                  structure with detailed courses,topics,and lessons.
                 </p>
               </div>
               <div className="flex items-start space-x-3">
@@ -1258,8 +1211,8 @@ import React, { useState, useEffect } from 'react';
                   3
                 </div>
                 <p>
-                  You can edit, add, or remove topics and lessons before
-                  generating the full content.
+                  You can edit,add,or remove topics and lessons before generating
+                  the full content.
                 </p>
               </div>
               <div className="flex items-start space-x-3">
@@ -1268,7 +1221,7 @@ import React, { useState, useEffect } from 'react';
                 </div>
                 <p>
                   Final content generation creates comprehensive lessons with case
-                  studies, FAQs, slides, and voice-over scripts.
+                  studies,FAQs,slides,and voice-over scripts.
                 </p>
               </div>
               <div className="flex items-start space-x-3">
@@ -1300,27 +1253,27 @@ import React, { useState, useEffect } from 'react';
               </div>
             </div>
             <div className="mt-6 flex justify-end">
-              <Button onClick={() => setShowInfoModal(false)}>Got it</Button>
+              <Button onClick={()=> setShowInfoModal(false)}>Got it</Button>
             </div>
           </motion.div>
         </motion.div>
       );
     
-      // Topic Additional Context Modal (existing, unchanged)
-      const TopicContextModal = () => (
+      // Topic Additional Context Modal (existing,unchanged)
+      const TopicContextModal=()=> (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          initial={{opacity: 0}}
+          animate={{opacity: 1}}
+          exit={{opacity: 0}}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowTopicContextModal(false)}
+          onClick={()=> setShowTopicContextModal(false)}
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            initial={{scale: 0.9,opacity: 0}}
+            animate={{scale: 1,opacity: 1}}
+            exit={{scale: 0.9,opacity: 0}}
             className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e)=> e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
@@ -1333,7 +1286,7 @@ import React, { useState, useEffect } from 'react';
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowTopicContextModal(false)}
+                onClick={()=> setShowTopicContextModal(false)}
               >
                 <SafeIcon icon={FiX} />
               </Button>
@@ -1343,22 +1296,22 @@ import React, { useState, useEffect } from 'react';
                 {selectedTopicForContext?.topicTitle}
               </h4>
               <p className="text-sm text-gray-600">
-                Add additional research, statistics, quotes, or latest findings
-                that will enhance all lessons in this topic.
+                Add additional research,statistics,quotes,or latest findings that
+                will enhance all lessons in this topic.
               </p>
             </div>
             <Textarea
               label="Additional Context (Optional)"
-              placeholder="Add research findings, statistics, industry quotes, latest trends, or any additional context that should be included in all lessons for this topic..."
+              placeholder="Add research findings,statistics,industry quotes,latest trends,or any additional context that should be included in all lessons for this topic..."
               rows={8}
               value={topicContextInput}
-              onChange={(e) => setTopicContextInput(e.target.value)}
+              onChange={(e)=> setTopicContextInput(e.target.value)}
               className="mb-6"
             />
             <div className="flex justify-end space-x-3">
               <Button
                 variant="secondary"
-                onClick={() => setShowTopicContextModal(false)}
+                onClick={()=> setShowTopicContextModal(false)}
               >
                 Cancel
               </Button>
@@ -1368,21 +1321,21 @@ import React, { useState, useEffect } from 'react';
         </motion.div>
       );
     
-      // Lesson Additional Context Modal (existing, unchanged)
-      const LessonContextModal = () => (
+      // Lesson Additional Context Modal (existing,unchanged)
+      const LessonContextModal=()=> (
         <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
+          initial={{opacity: 0}}
+          animate={{opacity: 1}}
+          exit={{opacity: 0}}
           className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowLessonContextModal(false)}
+          onClick={()=> setShowLessonContextModal(false)}
         >
           <motion.div
-            initial={{ scale: 0.9, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.9, opacity: 0 }}
+            initial={{scale: 0.9,opacity: 0}}
+            animate={{scale: 1,opacity: 1}}
+            exit={{scale: 0.9,opacity: 0}}
             className="bg-white rounded-xl p-6 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e)=> e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center space-x-3">
@@ -1395,7 +1348,7 @@ import React, { useState, useEffect } from 'react';
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowLessonContextModal(false)}
+                onClick={()=> setShowLessonContextModal(false)}
               >
                 <SafeIcon icon={FiX} />
               </Button>
@@ -1405,22 +1358,22 @@ import React, { useState, useEffect } from 'react';
                 {selectedLessonForContext?.lessonTitle}
               </h4>
               <p className="text-sm text-gray-600">
-                Add specific context, examples, or additional information for this
+                Add specific context,examples,or additional information for this
                 particular lesson.
               </p>
             </div>
             <Textarea
               label="Lesson-Specific Additional Context (Optional)"
-              placeholder="Add specific examples, case studies, technical details, or any additional context that should be included specifically in this lesson..."
+              placeholder="Add specific examples,case studies,technical details,or any additional context that should be included specifically in this lesson..."
               rows={8}
               value={lessonContextInput}
-              onChange={(e) => setLessonContextInput(e.target.value)}
+              onChange={(e)=> setLessonContextInput(e.target.value)}
               className="mb-6"
             />
             <div className="flex justify-end space-x-3">
               <Button
                 variant="secondary"
-                onClick={() => setShowLessonContextModal(false)}
+                onClick={()=> setShowLessonContextModal(false)}
               >
                 Cancel
               </Button>
@@ -1439,6 +1392,7 @@ import React, { useState, useEffect } from 'react';
           </div>
         );
       }
+    
       return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <EnhancedStatusBar
@@ -1473,8 +1427,8 @@ import React, { useState, useEffect } from 'react';
           </AnimatePresence>
     
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{opacity: 0,y: 20}}
+            animate={{opacity: 1,y: 0}}
             className="mb-8"
           >
             <div className="flex justify-between items-center">
@@ -1483,7 +1437,7 @@ import React, { useState, useEffect } from 'react';
                   Review & Edit Program
                 </h1>
                 <p className="text-gray-600">
-                  Review the generated program structure, make edits, and generate
+                  Review the generated program structure,make edits,and generate
                   content for specific courses.
                 </p>
                 {/* ✅ NEW: Program Code Display */}
@@ -1496,7 +1450,7 @@ import React, { useState, useEffect } from 'react';
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setShowProgramCodeInfo(true)}
+                      onClick={()=> setShowProgramCodeInfo(true)}
                       className="text-primary-600 hover:text-primary-700"
                     >
                       <SafeIcon icon={FiInfo} className="mr-1" /> About Numbering
@@ -1508,7 +1462,7 @@ import React, { useState, useEffect } from 'react';
                 <Button
                   variant="ghost"
                   className="flex items-center space-x-2"
-                  onClick={() => setShowCitationsModal(true)}
+                  onClick={()=> setShowCitationsModal(true)}
                 >
                   <SafeIcon
                     icon={FiExternalLink}
@@ -1519,7 +1473,7 @@ import React, { useState, useEffect } from 'react';
                 <Button
                   variant="ghost"
                   className="flex items-center space-x-2"
-                  onClick={() => setShowInfoModal(true)}
+                  onClick={()=> setShowInfoModal(true)}
                 >
                   <SafeIcon icon={FiInfo} className="text-primary-600" />
                   <span>How it works</span>
@@ -1532,14 +1486,14 @@ import React, { useState, useEffect } from 'react';
           {(currentProgram?.researchCitations?.length > 0 ||
             currentProgram?.structureCitations?.length > 0) && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{opacity: 0,y: -10}}
+              animate={{opacity: 1,y: 0}}
               className="mb-8"
             >
               <Card className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200">
                 <div
                   className="flex items-center justify-between cursor-pointer"
-                  onClick={() => setCitationsExpanded(!citationsExpanded)}
+                  onClick={()=> setCitationsExpanded(!citationsExpanded)}
                 >
                   <div className="flex items-center space-x-3">
                     <div className="p-2 bg-blue-100 rounded-full">
@@ -1566,7 +1520,7 @@ import React, { useState, useEffect } from 'react';
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={(e) => {
+                      onClick={(e)=> {
                         e.stopPropagation();
                         setShowCitationsModal(true);
                       }}
@@ -1583,9 +1537,9 @@ import React, { useState, useEffect } from 'react';
                 <AnimatePresence>
                   {citationsExpanded && (
                     <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
+                      initial={{height: 0,opacity: 0}}
+                      animate={{height: 'auto',opacity: 1}}
+                      exit={{height: 0,opacity: 0}}
                       className="mt-4 pt-4 border-t border-blue-200"
                     >
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1598,8 +1552,8 @@ import React, { useState, useEffect } from 'react';
                             </h4>
                             <div className="space-y-2">
                               {currentProgram.researchCitations
-                                .slice(0, 3)
-                                .map((citation, index) => (
+                                .slice(0,3)
+                                .map((citation,index)=> (
                                   <div key={index} className="text-sm">
                                     <a
                                       href={citation.url}
@@ -1635,8 +1589,8 @@ import React, { useState, useEffect } from 'react';
                             </h4>
                             <div className="space-y-2">
                               {currentProgram.structureCitations
-                                .slice(0, 3)
-                                .map((citation, index) => (
+                                .slice(0,3)
+                                .map((citation,index)=> (
                                   <div key={index} className="text-sm">
                                     <a
                                       href={citation.url}
@@ -1668,8 +1622,8 @@ import React, { useState, useEffect } from 'react';
     
           {/* Review Notice Banner */}
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{opacity: 0,y: -10}}
+            animate={{opacity: 1,y: 0}}
             className="mb-8"
           >
             <Card className="p-4 bg-blue-50 border-blue-200">
@@ -1683,7 +1637,7 @@ import React, { useState, useEffect } from 'react';
                   </h3>
                   <p className="text-blue-700">
                     You're reviewing the program structure based on comprehensive AI
-                    research. Edit, add, or remove topics and lessons before
+                    research. Edit,add,or remove topics and lessons before
                     generating full content. You can also add knowledge libraries to
                     topics or lessons to enhance content with relevant information.
                   </p>
@@ -1702,8 +1656,8 @@ import React, { useState, useEffect } from 'react';
                 {currentProgram.courses && currentProgram.courses.length > 0 ? (
                   <Select
                     value={selectedCourseId}
-                    onChange={(e) => setSelectedCourseId(e.target.value)}
-                    options={currentProgram.courses.map((course) => ({
+                    onChange={(e)=> setSelectedCourseId(e.target.value)}
+                    options={currentProgram.courses.map((course)=> ({
                       value: course.id,
                       label: course.courseTitle,
                     }))}
@@ -1715,6 +1669,72 @@ import React, { useState, useEffect } from 'react';
     
                 {selectedCourse && (
                   <div className="space-y-4">
+                    {/* ✅ NEW: OpenAI Model Selection */}
+                    <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center space-x-3 mb-3">
+                        <SafeIcon icon={FiCpu} className="text-green-600 text-lg" />
+                        <h4 className="font-medium text-green-800">
+                          Content Generation Model
+                        </h4>
+                      </div>
+                      <Select
+                        label="OpenAI Model"
+                        value={selectedModel}
+                        onChange={(e)=> setSelectedModel(e.target.value)}
+                        options={openAIModels.map(modelId=> ({
+                          value: modelId,
+                          label: modelId,
+                        }))}
+                        disabled={modelsLoading}
+                      />
+                      {modelsLoading && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          Loading models...
+                        </p>
+                      )}
+                      <p className="text-xs text-green-700 mt-1">
+                        Select the OpenAI model for generating lesson content.
+                      </p>
+                    </div>
+    
+                    {isGpt5Model && (
+                      <motion.div
+                        initial={{opacity: 0,y: -10}}
+                        animate={{opacity: 1,y: 0}}
+                        className="p-4 bg-blue-50 border border-blue-200 rounded-lg space-y-3"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <SafeIcon
+                            icon={FiCpu}
+                            className="text-blue-600 text-lg"
+                          />
+                          <h4 className="font-medium text-blue-800">
+                            GPT-5 Parameters
+                          </h4>
+                        </div>
+                        <Select
+                          label="Reasoning Effort"
+                          value={reasoningEffort}
+                          onChange={(e)=> setReasoningEffort(e.target.value)}
+                          options={[
+                            {value: 'low',label: 'Low'},
+                            {value: 'medium',label: 'Medium'},
+                            {value: 'high',label: 'High'},
+                          ]}
+                        />
+                        <Select
+                          label="Verbosity"
+                          value={verbosity}
+                          onChange={(e)=> setVerbosity(e.target.value)}
+                          options={[
+                            {value: 'low',label: 'Low'},
+                            {value: 'medium',label: 'Medium'},
+                            {value: 'high',label: 'High'},
+                          ]}
+                        />
+                      </motion.div>
+                    )}
+    
                     {/* Design Parameters Display and Override */}
                     <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
                       <div className="flex items-center justify-between mb-3">
@@ -1768,7 +1788,7 @@ import React, { useState, useEffect } from 'react';
                         <input
                           type="checkbox"
                           checked={usePerplexityWebSearch}
-                          onChange={(e) =>
+                          onChange={(e)=>
                             setUsePerplexityWebSearch(e.target.checked)
                           }
                           className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
@@ -1788,7 +1808,7 @@ import React, { useState, useEffect } from 'react';
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setShowSonarConfig(true)}
+                            onClick={()=> setShowSonarConfig(true)}
                             className="flex items-center space-x-2 text-purple-700 hover:text-purple-800"
                           >
                             <SafeIcon icon={FiSettings} />
@@ -1802,7 +1822,7 @@ import React, { useState, useEffect } from 'react';
                         </div>
                       )}
                       {usePerplexityWebSearch &&
-                        getActivePerplexityKeys().length === 0 && (
+                        getActivePerplexityKeys().length===0 && (
                           <div className="mt-2 text-xs text-red-600">
                             ⚠️ No Perplexity API keys found. Please add one in
                             settings.
@@ -1812,7 +1832,7 @@ import React, { useState, useEffect } from 'react';
     
                     <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">
                       <p className="text-sm text-yellow-800 font-medium">
-                        After reviewing and editing, click "Generate Content" to
+                        After reviewing and editing,click "Generate Content" to
                         create the full course in your LMS
                       </p>
                     </div>
@@ -1825,7 +1845,6 @@ import React, { useState, useEffect } from 'react';
                       <SafeIcon icon={FiPlay} />
                       <span>Generate Content</span>
                     </Button>
-    
                     <Button
                       onClick={handleRegenerateCourse}
                       loading={regeneratingCourse}
@@ -1835,7 +1854,6 @@ import React, { useState, useEffect } from 'react';
                       <SafeIcon icon={FiRefreshCw} />
                       <span>Regenerate Course</span>
                     </Button>
-    
                     <div className="text-sm text-gray-600">
                       <p>
                         <strong>Topics:</strong> {selectedCourse.topics?.length || 0}
@@ -1843,7 +1861,7 @@ import React, { useState, useEffect } from 'react';
                       <p>
                         <strong>Total Lessons:</strong>{' '}
                         {selectedCourse.topics?.reduce(
-                          (total, topic) => total + (topic.lessons?.length || 0),
+                          (total,topic)=> total + (topic.lessons?.length || 0),
                           0
                         ) || 0}
                       </p>
@@ -1857,15 +1875,21 @@ import React, { useState, useEffect } from 'react';
                   Content Generation Details
                 </h3>
                 <p className="text-sm text-primary-700 mb-4">
-                  When you click "Generate Content", our AI will create:
+                  When you click "Generate Content",our AI will create:
                 </p>
                 <ul className="text-sm text-primary-700 space-y-2">
                   <li className="flex items-start">
-                    <SafeIcon icon={FiBook} className="mr-2 text-primary-600 mt-0.5" />
+                    <SafeIcon
+                      icon={FiBook}
+                      className="mr-2 text-primary-600 mt-0.5"
+                    />
                     <span>Full lesson content (1500-2000 words)</span>
                   </li>
                   <li className="flex items-start">
-                    <SafeIcon icon={FiList} className="mr-2 text-primary-600 mt-0.5" />
+                    <SafeIcon
+                      icon={FiList}
+                      className="mr-2 text-primary-600 mt-0.5"
+                    />
                     <span>Case studies and practical examples</span>
                   </li>
                   <li className="flex items-start">
@@ -1900,7 +1924,6 @@ import React, { useState, useEffect } from 'react';
                   </li>
                 </ul>
               </Card>
-    
               {/* Enhanced Web Search Enhancement Info */}
               <Card className="p-6 mt-6 bg-gradient-to-r from-purple-50 to-purple-100 border-purple-200">
                 <div className="flex items-center space-x-2 mb-2">
@@ -1910,7 +1933,7 @@ import React, { useState, useEffect } from 'react';
                   </h3>
                 </div>
                 <p className="text-sm text-purple-700 mb-4">
-                  When enabled, Perplexity web search will:
+                  When enabled,Perplexity web search will:
                 </p>
                 <ul className="text-sm text-purple-700 space-y-2">
                   <li className="flex items-start">
@@ -1943,13 +1966,12 @@ import React, { useState, useEffect } from 'react';
                       4
                     </div>
                     <span>
-                      Enhanced with configurable parameters: model, context size,
-                      recency filter, domain filter, and location-based results
+                      Enhanced with configurable parameters: model,context
+                      size,recency filter,domain filter,and location-based results
                     </span>
                   </li>
                 </ul>
               </Card>
-    
               {/* Knowledge Library Info */}
               <Card className="p-6 mt-6 bg-gradient-to-r from-blue-50 to-blue-100 border-blue-200">
                 <div className="flex items-center space-x-2 mb-2">
@@ -1984,7 +2006,7 @@ import React, { useState, useEffect } from 'react';
                       3
                     </div>
                     <span>
-                      Upload PDFs, DOCXs, and more to create custom libraries
+                      Upload PDFs,DOCXs,and more to create custom libraries
                     </span>
                   </li>
                   <li className="flex items-start">
@@ -2006,18 +2028,18 @@ import React, { useState, useEffect } from 'react';
                   {/* Course Header */}
                   <div className="mb-6">
                     <div className="flex items-center space-x-3 mb-4">
-                      <SafeIcon icon={FiBook} className="text-2xl text-primary-600" />
+                      <SafeIcon
+                        icon={FiBook}
+                        className="text-2xl text-primary-600"
+                      />
                       <div className="flex-1">
-                        {editingItem?.type === 'course' &&
-                        editingItem?.field === 'courseTitle' ? (
+                        {editingItem?.type==='course' &&
+                        editingItem?.field==='courseTitle' ? (
                           <div className="flex items-center space-x-2">
                             <Input
                               value={editingItem.value}
-                              onChange={(e) =>
-                                setEditingItem({
-                                  ...editingItem,
-                                  value: e.target.value,
-                                })
+                              onChange={(e)=>
+                                setEditingItem({...editingItem,value: e.target.value})
                               }
                               className="flex-1"
                             />
@@ -2033,7 +2055,7 @@ import React, { useState, useEffect } from 'react';
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() =>
+                              onClick={()=>
                                 handleEdit(
                                   'course',
                                   selectedCourse.id,
@@ -2049,16 +2071,13 @@ import React, { useState, useEffect } from 'react';
                       </div>
                     </div>
                   </div>
-                  {editingItem?.type === 'course' &&
-                  editingItem?.field === 'courseDescription' ? (
+                  {editingItem?.type==='course' &&
+                  editingItem?.field==='courseDescription' ? (
                     <div className="space-y-2">
                       <Textarea
                         value={editingItem.value}
-                        onChange={(e) =>
-                          setEditingItem({
-                            ...editingItem,
-                            value: e.target.value,
-                          })
+                        onChange={(e)=>
+                          setEditingItem({...editingItem,value: e.target.value})
                         }
                         rows={3}
                       />
@@ -2074,7 +2093,7 @@ import React, { useState, useEffect } from 'react';
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() =>
+                        onClick={()=>
                           handleEdit(
                             'course',
                             selectedCourse.id,
@@ -2102,19 +2121,19 @@ import React, { useState, useEffect } from 'react';
     
                   {/* Topics and Lessons */}
                   <div className="space-y-4">
-                    {selectedCourse.topics?.map((topic, topicIndex) => (
+                    {selectedCourse.topics?.map((topic,topicIndex)=> (
                       <motion.div
                         key={topic.id}
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: topicIndex * 0.1 }}
+                        initial={{opacity: 0,y: 10}}
+                        animate={{opacity: 1,y: 0}}
+                        transition={{delay: topicIndex * 0.1}}
                         className="border border-gray-200 rounded-lg"
                       >
                         {/* Topic Header */}
                         <div className="p-4 bg-gray-50 border-b border-gray-200">
                           <div className="flex items-center space-x-2">
                             <button
-                              onClick={() => toggleTopic(topic.id)}
+                              onClick={()=> toggleTopic(topic.id)}
                               className="text-gray-400 hover:text-gray-600 p-1"
                             >
                               <SafeIcon
@@ -2130,13 +2149,13 @@ import React, { useState, useEffect } from 'react';
                               className="text-lg text-green-600"
                             />
                             <div className="flex-1">
-                              {editingItem?.type === 'topic' &&
-                              editingItem?.id === topic.id &&
-                              editingItem?.field === 'topicTitle' ? (
+                              {editingItem?.type==='topic' &&
+                              editingItem?.id===topic.id &&
+                              editingItem?.field==='topicTitle' ? (
                                 <div className="flex items-center space-x-2">
                                   <Input
                                     value={editingItem.value}
-                                    onChange={(e) =>
+                                    onChange={(e)=>
                                       setEditingItem({
                                         ...editingItem,
                                         value: e.target.value,
@@ -2156,7 +2175,7 @@ import React, { useState, useEffect } from 'react';
                                   <Button
                                     variant="ghost"
                                     size="sm"
-                                    onClick={() =>
+                                    onClick={()=>
                                       handleEdit(
                                         'topic',
                                         topic.id,
@@ -2182,7 +2201,7 @@ import React, { useState, useEffect } from 'react';
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleOpenTopicContextModal(topic)}
+                              onClick={()=> handleOpenTopicContextModal(topic)}
                               className={`${
                                 topic.additionalContext
                                   ? 'text-primary-600 bg-primary-50'
@@ -2192,24 +2211,23 @@ import React, { useState, useEffect } from 'react';
                             >
                               <SafeIcon icon={FiDatabase} />
                             </Button>
-    
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleDeleteTopic(topic.id)}
+                              onClick={()=> handleDeleteTopic(topic.id)}
                               className="text-red-600 hover:text-red-700"
                             >
                               <SafeIcon icon={FiTrash2} />
                             </Button>
                           </div>
-                          {editingItem?.type === 'topic' &&
-                          editingItem?.id === topic.id &&
-                          editingItem?.field ===
+                          {editingItem?.type==='topic' &&
+                          editingItem?.id===topic.id &&
+                          editingItem?.field===
                             'topicLearningObjectiveDescription' ? (
                             <div className="mt-2 space-y-2">
                               <Textarea
                                 value={editingItem.value}
-                                onChange={(e) =>
+                                onChange={(e)=>
                                   setEditingItem({
                                     ...editingItem,
                                     value: e.target.value,
@@ -2229,7 +2247,7 @@ import React, { useState, useEffect } from 'react';
                               <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={() =>
+                                onClick={()=>
                                   handleEdit(
                                     'topic',
                                     topic.id,
@@ -2265,15 +2283,15 @@ import React, { useState, useEffect } from 'react';
                         <AnimatePresence>
                           {expandedTopics.has(topic.id) && (
                             <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
+                              initial={{opacity: 0,height: 0}}
+                              animate={{opacity: 1,height: 'auto'}}
+                              exit={{opacity: 0,height: 0}}
                               className="overflow-hidden"
                             >
                               <div className="p-4 space-y-3">
                                 {/* Add Lesson Button */}
                                 <Button
-                                  onClick={() => handleAddLesson(topic.id)}
+                                  onClick={()=> handleAddLesson(topic.id)}
                                   variant="ghost"
                                   size="sm"
                                   className="flex items-center space-x-2 text-primary-600"
@@ -2281,7 +2299,7 @@ import React, { useState, useEffect } from 'react';
                                   <SafeIcon icon={FiPlus} />
                                   <span>Add Lesson</span>
                                 </Button>
-                                {topic.lessons?.map((lesson, lessonIndex) => (
+                                {topic.lessons?.map((lesson,lessonIndex)=> (
                                   <div
                                     key={lesson.id}
                                     className="flex items-center space-x-2 p-3 bg-white border border-gray-100 rounded-lg"
@@ -2291,13 +2309,13 @@ import React, { useState, useEffect } from 'react';
                                       className="text-blue-600"
                                     />
                                     <div className="flex-1">
-                                      {editingItem?.type === 'lesson' &&
-                                      editingItem?.id === lesson.id &&
-                                      editingItem?.field === 'lessonTitle' ? (
+                                      {editingItem?.type==='lesson' &&
+                                      editingItem?.id===lesson.id &&
+                                      editingItem?.field==='lessonTitle' ? (
                                         <div className="flex items-center space-x-2">
                                           <Input
                                             value={editingItem.value}
-                                            onChange={(e) =>
+                                            onChange={(e)=>
                                               setEditingItem({
                                                 ...editingItem,
                                                 value: e.target.value,
@@ -2317,7 +2335,7 @@ import React, { useState, useEffect } from 'react';
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() =>
+                                            onClick={()=>
                                               handleEdit(
                                                 'lesson',
                                                 lesson.id,
@@ -2330,14 +2348,13 @@ import React, { useState, useEffect } from 'react';
                                           </Button>
                                         </div>
                                       )}
-                                      {editingItem?.type === 'lesson' &&
-                                      editingItem?.id === lesson.id &&
-                                      editingItem?.field ===
-                                        'lessonDescription' ? (
+                                      {editingItem?.type==='lesson' &&
+                                      editingItem?.id===lesson.id &&
+                                      editingItem?.field==='lessonDescription' ? (
                                         <div className="mt-2 space-y-2">
                                           <Textarea
                                             value={editingItem.value}
-                                            onChange={(e) =>
+                                            onChange={(e)=>
                                               setEditingItem({
                                                 ...editingItem,
                                                 value: e.target.value,
@@ -2357,7 +2374,7 @@ import React, { useState, useEffect } from 'react';
                                           <Button
                                             variant="ghost"
                                             size="sm"
-                                            onClick={() =>
+                                            onClick={()=>
                                               handleEdit(
                                                 'lesson',
                                                 lesson.id,
@@ -2406,7 +2423,7 @@ import React, { useState, useEffect } from 'react';
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() =>
+                                      onClick={()=>
                                         handleOpenLessonContextModal(lesson)
                                       }
                                       className={`${
@@ -2418,11 +2435,10 @@ import React, { useState, useEffect } from 'react';
                                     >
                                       <SafeIcon icon={FiFileText} />
                                     </Button>
-    
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() =>
+                                      onClick={()=>
                                         handleDeleteLesson(lesson.id)
                                       }
                                       className="text-red-600 hover:text-red-700"
